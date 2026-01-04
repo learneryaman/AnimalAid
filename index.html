@@ -1,0 +1,2555 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AnimalAid — Rescue & Treatment Workflow</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <style>
+    :root { color-scheme: light; }
+    .glass { backdrop-filter: blur(10px); background: rgba(255,255,255,.72); }
+    .soft-shadow { box-shadow: 0 10px 30px rgba(0,0,0,.08); }
+    .focus-ring:focus { outline: none; box-shadow: 0 0 0 4px rgba(59,130,246,.25); }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    .skeleton { background: linear-gradient(90deg, rgba(0,0,0,.04), rgba(0,0,0,.08), rgba(0,0,0,.04)); background-size: 200% 100%; animation: shimmer 1.3s infinite; }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+    .toast { animation: toastIn .2s ease-out; }
+    @keyframes toastIn { from { transform: translateY(8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    @media print {
+      .no-print { display: none !important; }
+      body { background: #fff !important; }
+    }
+  </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-slate-50 via-white to-emerald-50 text-slate-900">
+  <!-- Top bar -->
+  <header class="no-print sticky top-0 z-40 border-b border-slate-200/70 bg-white/70 glass">
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div class="flex h-16 items-center justify-between gap-3">
+        <div class="flex items-center gap-3">
+          <div class="h-10 w-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 soft-shadow"></div>
+          <div>
+            <div class="text-sm font-semibold leading-4">AnimalAid</div>
+            <div class="text-xs text-slate-500">Rescue → Treatment → Release workflow (People • NGO/Hospital • Admin)</div>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <div id="modeBadge" class="hidden rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs text-slate-600">Mode</div>
+          <div class="hidden items-center gap-2 sm:flex">
+            <div id="userChip" class="hidden rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs">
+              <div class="flex items-center gap-2">
+                <div class="h-7 w-7 rounded-full bg-slate-200" id="userAvatar"></div>
+                <div class="min-w-0">
+                  <div class="truncate font-semibold" id="userName">Guest</div>
+                  <div class="truncate text-[11px] text-slate-500" id="userRole">Not signed in</div>
+                </div>
+              </div>
+            </div>
+            <button id="btnSignOut" class="hidden rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800 focus-ring">Sign out</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- App shell -->
+  <main class="mx-auto max-w-7xl px-4 pb-14 pt-6 sm:px-6 lg:px-8">
+
+    <!-- Landing/Login -->
+    <section id="viewLanding" class="grid gap-6 lg:grid-cols-12">
+      <div class="lg:col-span-7">
+        <div class="rounded-2xl border border-slate-200 bg-white p-6 soft-shadow">
+          <h1 class="text-2xl font-bold tracking-tight">Report injured/stray animals fast, track treatment transparently, and publish verified reports.</h1>
+          <p class="mt-2 text-sm text-slate-600">This is a ready-to-use prototype powered by <span class="font-semibold">browser geolocation</span> (no location API) + optional <span class="font-semibold">AI assistance</span>. Authentication can run with <span class="font-semibold">Firebase Auth</span> (Google for People, Email/Password for NGO/Admin). Data is stored in <span class="font-semibold">Firestore</span> when configured; otherwise it uses <span class="font-semibold">localStorage</span>.</p>
+
+          <div class="mt-6 grid gap-4 sm:grid-cols-2">
+            <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <div class="text-sm font-semibold">People Portal</div>
+              <ul class="mt-2 space-y-1 text-xs text-slate-600">
+                <li>• Camera/upload + AI triage suggestion</li>
+                <li>• Auto-fill coordinates via device location</li>
+                <li>• Request tracking with checkpoints</li>
+                <li>• Downloadable treatment report PDF</li>
+              </ul>
+            </div>
+            <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <div class="text-sm font-semibold">NGO / Hospital + Admin</div>
+              <ul class="mt-2 space-y-1 text-xs text-slate-600">
+                <li>• NGO: update checkpoints, edit treatment report</li>
+                <li>• NGO: weekly/monthly analytics + PDF export</li>
+                <li>• Admin: oversight dashboard, export/import, cleanup</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4">
+            <div class="text-sm font-semibold text-amber-900">Data persistence</div>
+            <p class="mt-1 text-xs text-amber-900/80">If you configure Firebase in code, requests are stored in <span class="font-semibold">Firestore</span> (sync across devices/users). If not configured, requests are stored in <span class="font-semibold">this browser only</span> using localStorage.</p>
+          </div>
+        </div>
+
+        <div class="mt-6 grid gap-4 sm:grid-cols-2">
+          <div class="rounded-2xl border border-slate-200 bg-white p-6 soft-shadow">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <div class="text-sm font-semibold">People login</div>
+                <div class="mt-1 text-xs text-slate-600">Google Auth only</div>
+              </div>
+              <span class="rounded-full bg-emerald-100 px-2 py-1 text-[11px] font-semibold text-emerald-700">Recommended</span>
+            </div>
+            <button id="btnGoogle" class="mt-4 w-full rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-700 focus-ring">Continue with Google</button>
+            <p class="mt-2 text-[11px] text-slate-500">If Firebase config is not set in code, this uses Demo login instantly (no popup). For video recording, use the “One-click Demo Studio” panel.</p>
+          </div>
+
+          <div class="rounded-2xl border border-slate-200 bg-white p-6 soft-shadow">
+            <div class="text-sm font-semibold">Staff login</div>
+            <div class="mt-1 text-xs text-slate-600">NGO / Hospital and Admin (Email + Password)</div>
+
+            <div class="mt-4 space-y-2">
+              <label class="block">
+                <span class="text-xs font-medium text-slate-700">Email</span>
+                <input id="email" type="email" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus-ring" placeholder="ngo@example.org" />
+              </label>
+              <label class="block">
+                <span class="text-xs font-medium text-slate-700">Password</span>
+                <input id="password" type="password" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus-ring" placeholder="••••••••" />
+              </label>
+              <div class="grid grid-cols-2 gap-2">
+                <button id="btnLoginNgo" class="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 focus-ring">Login NGO</button>
+                <button id="btnLoginAdmin" class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-50 focus-ring">Login Admin</button>
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <button id="btnDemoNgo" class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold hover:bg-slate-50 focus-ring">Use demo NGO</button>
+                <button id="btnDemoAdmin" class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold hover:bg-slate-50 focus-ring">Use demo Admin</button>
+              </div>
+              <p class="text-[11px] text-slate-500">Access is controlled by hardcoded allowed email lists in code (edit arrays in index.html).</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="lg:col-span-5">
+        <div class="rounded-2xl border border-slate-200 bg-white p-6 soft-shadow">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <div class="text-sm font-semibold">AI Helper (optional)</div>
+              <div class="mt-1 text-xs text-slate-600">Used for: triage suggestions, report summaries, complaint writing assistance.</div>
+            </div>
+            <span class="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-700">Bring your own key</span>
+          </div>
+          <div class="mt-4 grid gap-3">
+            <label class="block">
+              <span class="text-xs font-medium text-slate-700">OpenAI API Key (stored only in your browser)</span>
+              <input id="openaiKey" type="password" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus-ring" placeholder="sk-..." />
+            </label>
+            <div class="flex gap-2">
+              <button id="btnSaveOpenAI" class="rounded-xl bg-white px-4 py-2.5 text-sm font-semibold ring-1 ring-slate-200 hover:bg-slate-50 focus-ring">Save</button>
+              <button id="btnClearOpenAI" class="rounded-xl bg-white px-4 py-2.5 text-sm font-semibold ring-1 ring-slate-200 hover:bg-slate-50 focus-ring">Clear</button>
+            </div>
+            <div class="rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-600">
+              <div class="font-semibold text-slate-800">Privacy note</div>
+              <p class="mt-1">If you use AI features with an API key, your prompt/image may be sent to OpenAI. For production, move AI calls to a secure backend so keys are not exposed.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-6 rounded-2xl border border-slate-200 bg-white p-6 soft-shadow">
+          <div class="text-sm font-semibold">Quick Demo Scenario (same browser)</div>
+          <ol class="mt-2 list-decimal space-y-1 pl-4 text-xs text-slate-600">
+            <li>Login as <span class="font-semibold">People</span> and create a new request with location.</li>
+            <li>Sign out → Login as <span class="font-semibold">NGO</span> and update checkpoints (Captured → Treatment → Released).</li>
+            <li>Sign out → Login as <span class="font-semibold">People</span>, open Completed Reports and download PDF.</li>
+          </ol>
+        </div>
+
+        <div class="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-6 soft-shadow">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <div class="text-sm font-semibold text-emerald-900">One-click Demo Studio (for video)</div>
+              <div class="mt-1 text-xs text-emerald-900/80">Instantly open any portal and load sample requests. Works even without Firebase.</div>
+            </div>
+            <span class="rounded-full bg-white/70 px-2 py-1 text-[11px] font-semibold text-emerald-800 ring-1 ring-emerald-200">No setup</span>
+          </div>
+
+          <div class="mt-4 grid gap-3">
+            <div class="grid gap-2 sm:grid-cols-3">
+              <button id="btnDemoOpenPeople" class="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 focus-ring">Open People demo</button>
+              <button id="btnDemoOpenNgo" class="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 focus-ring">Open NGO demo</button>
+              <button id="btnDemoOpenAdmin" class="rounded-xl border border-emerald-200 bg-white px-4 py-2.5 text-sm font-semibold text-emerald-900 hover:bg-emerald-100/40 focus-ring">Open Admin demo</button>
+            </div>
+
+            <div class="grid gap-2 sm:grid-cols-2">
+              <button id="btnSeedDemoData" class="rounded-xl border border-emerald-200 bg-white px-4 py-2.5 text-sm font-semibold text-emerald-900 hover:bg-emerald-100/40 focus-ring">Load sample requests</button>
+              <button id="btnClearDemoData" class="rounded-xl border border-rose-200 bg-white px-4 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-50 focus-ring">Clear all requests</button>
+            </div>
+
+            <div class="rounded-xl border border-emerald-200 bg-white/70 p-3 text-xs text-emerald-900/80">
+              <div class="font-semibold text-emerald-900">Tip for recording</div>
+              <p class="mt-1">Click “Load sample requests” → open NGO demo → mark a request as Captured/Treated/Released → open People demo → download the PDF from “Completed reports”.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-6 rounded-2xl border border-slate-200 bg-white p-6 soft-shadow">
+          <div class="text-sm font-semibold">Hardcoded Firebase config</div>
+          <p class="mt-2 text-xs text-slate-600">To enable Firebase Auth + Firestore persistence, edit <span class="mono">FIREBASE_CONFIG</span> inside <span class="mono">index.html</span>. If left as placeholders, the app uses Demo auth and localStorage.</p>
+          <div class="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+            <div class="font-semibold text-slate-800">Required in Firebase Console</div>
+            <ul class="mt-1 list-disc pl-4">
+              <li>Authentication → enable <span class="font-semibold">Google</span> and <span class="font-semibold">Email/Password</span></li>
+              <li>Firestore Database → create database + publish rules</li>
+              <li>Create staff users (NGO/Admin) in Authentication (Email/Password)</li>
+              <li>Add their emails to the hardcoded allowed lists in code</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Authenticated app -->
+    <section id="viewApp" class="hidden">
+      <div class="grid gap-6 lg:grid-cols-12">
+        <!-- Sidebar -->
+        <aside class="no-print lg:col-span-3">
+          <div class="rounded-2xl border border-slate-200 bg-white p-4 soft-shadow">
+            <div class="flex items-center justify-between">
+              <div>
+                <div class="text-sm font-semibold" id="sideRoleTitle">Portal</div>
+                <div class="text-xs text-slate-500" id="sideSub">Choose an action</div>
+              </div>
+              <button id="btnMobileMenu" class="lg:hidden rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold hover:bg-slate-50 focus-ring">Menu</button>
+            </div>
+
+            <div id="nav" class="mt-4 space-y-2">
+              <!-- injected -->
+            </div>
+
+            <div class="mt-4 border-t border-slate-200 pt-4 space-y-2">
+              <button id="btnOpenAIHelper" class="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-50 focus-ring">AI Helper</button>
+            </div>
+          </div>
+        </aside>
+
+        <!-- Main content -->
+        <div class="lg:col-span-9 space-y-6">
+          <!-- People pages -->
+          <section id="pagePeopleNew" class="hidden">
+            <div class="rounded-2xl border border-slate-200 bg-white p-6 soft-shadow">
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 class="text-lg font-bold">People Portal — Animal Condition</h2>
+                  <p class="mt-1 text-sm text-slate-600">Capture/upload an image, allow location, and submit a request. Optional AI can suggest likely condition + next steps.</p>
+                </div>
+                <div class="flex gap-2">
+                  <button id="btnGetLocation" class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-50 focus-ring">Use my location</button>
+                  <button id="btnResetNew" class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-50 focus-ring">Reset</button>
+                </div>
+              </div>
+
+              <div class="mt-6 grid gap-6 lg:grid-cols-2">
+                <div class="rounded-xl border border-slate-200 p-4">
+                  <div class="flex items-center justify-between">
+                    <div class="text-sm font-semibold">Photo</div>
+                    <div class="flex gap-2">
+                      <button id="btnStartCamera" class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold hover:bg-slate-50 focus-ring">Start camera</button>
+                      <button id="btnCapture" class="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800 focus-ring">Capture</button>
+                      <button id="btnStopCamera" class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold hover:bg-slate-50 focus-ring">Stop</button>
+                    </div>
+                  </div>
+                  <div class="mt-3 grid gap-3">
+                    <video id="video" class="hidden w-full rounded-xl bg-slate-100" autoplay playsinline></video>
+                    <canvas id="canvas" class="hidden w-full rounded-xl bg-slate-100"></canvas>
+                    <img id="imgPreview" class="hidden w-full rounded-xl border border-slate-200" alt="preview" />
+
+                    <label class="block">
+                      <span class="text-xs font-medium text-slate-700">Or upload image</span>
+                      <input id="file" type="file" accept="image/*" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus-ring" />
+                    </label>
+
+                    <div class="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                      <div class="font-semibold text-slate-800">Tip</div>
+                      <p class="mt-1">Try to capture the animal’s posture/injury clearly and keep a safe distance.</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="space-y-4">
+                  <div class="rounded-xl border border-slate-200 p-4">
+                    <div class="text-sm font-semibold">Report details</div>
+                    <div class="mt-3 grid gap-3 sm:grid-cols-2">
+                      <label class="block sm:col-span-2">
+                        <span class="text-xs font-medium text-slate-700">Animal type</span>
+                        <select id="animalType" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus-ring">
+                          <option>Dog</option>
+                          <option>Cat</option>
+                          <option>Cow</option>
+                          <option>Bird</option>
+                          <option>Other</option>
+                        </select>
+                      </label>
+                      <label class="block">
+                        <span class="text-xs font-medium text-slate-700">Your name</span>
+                        <input id="reporterName" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus-ring" placeholder="(auto from login if available)" />
+                      </label>
+                      <label class="block">
+                        <span class="text-xs font-medium text-slate-700">Phone (optional)</span>
+                        <input id="reporterPhone" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus-ring" placeholder="+91..." />
+                      </label>
+                      <label class="block sm:col-span-2">
+                        <span class="text-xs font-medium text-slate-700">Describe condition (what you see)</span>
+                        <textarea id="conditionText" rows="4" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus-ring" placeholder="Bleeding from leg, limping, not moving, breathing fast..."></textarea>
+                      </label>
+                    </div>
+
+                    <div class="mt-3 grid gap-3 sm:grid-cols-3">
+                      <label class="block">
+                        <span class="text-xs font-medium text-slate-700">Latitude</span>
+                        <input id="lat" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus-ring" placeholder="auto" />
+                      </label>
+                      <label class="block">
+                        <span class="text-xs font-medium text-slate-700">Longitude</span>
+                        <input id="lng" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus-ring" placeholder="auto" />
+                      </label>
+                      <label class="block">
+                        <span class="text-xs font-medium text-slate-700">Accuracy (m)</span>
+                        <input id="acc" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus-ring" placeholder="auto" />
+                      </label>
+                      <label class="block sm:col-span-3">
+                        <span class="text-xs font-medium text-slate-700">Location note (landmark / street)</span>
+                        <input id="locNote" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus-ring" placeholder="Near bus stop / market / colony..." />
+                      </label>
+                    </div>
+
+                    <div class="mt-3 flex flex-wrap gap-2">
+                      <button id="btnAIAnalyze" class="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 focus-ring">AI: Suggest condition & next steps</button>
+                      <button id="btnAutofillComplaint" class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-50 focus-ring">AI: Draft complaint text</button>
+                    </div>
+                  </div>
+
+                  <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <div class="flex items-center justify-between">
+                      <div class="text-sm font-semibold">AI Output</div>
+                      <div id="aiStatus" class="text-xs text-slate-500">Ready</div>
+                    </div>
+                    <pre id="aiOutput" class="mt-2 whitespace-pre-wrap text-xs text-slate-700">(AI suggestions will appear here)</pre>
+                  </div>
+
+                  <div class="flex items-center justify-between">
+                    <div class="text-xs text-slate-600">Submitting creates a unique token + opens in Requests.</div>
+                    <button id="btnSubmitRequest" class="rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800 focus-ring">Submit request</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section id="pagePeopleRequests" class="hidden">
+            <div class="rounded-2xl border border-slate-200 bg-white p-6 soft-shadow">
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 class="text-lg font-bold">People Portal — Requests</h2>
+                  <p class="mt-1 text-sm text-slate-600">Track your reported animals with checkpoint status.</p>
+                </div>
+                <div class="flex gap-2">
+                  <button id="btnRefreshPeople" class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-50 focus-ring">Refresh</button>
+                </div>
+              </div>
+
+              <div class="mt-5" id="peopleRequestsWrap"></div>
+            </div>
+          </section>
+
+          <section id="pagePeopleReports" class="hidden">
+            <div class="rounded-2xl border border-slate-200 bg-white p-6 soft-shadow">
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 class="text-lg font-bold">People Portal — Completed Reports</h2>
+                  <p class="mt-1 text-sm text-slate-600">Reports appear after release checkpoint. Download any report as PDF.</p>
+                </div>
+                <button id="btnRefreshReports" class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-50 focus-ring">Refresh</button>
+              </div>
+              <div class="mt-5" id="peopleReportsWrap"></div>
+            </div>
+          </section>
+
+          <section id="pagePeopleVets" class="hidden">
+            <div class="rounded-2xl border border-slate-200 bg-white p-6 soft-shadow">
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 class="text-lg font-bold">People Portal — Nearby Vets</h2>
+                  <p class="mt-1 text-sm text-slate-600">Uses device location only. Distance/time are calculated locally (no Maps API).</p>
+                </div>
+                <button id="btnLoadVets" class="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 focus-ring">Load nearby vets</button>
+              </div>
+
+              <div class="mt-5 grid gap-4 lg:grid-cols-3">
+                <div class="rounded-xl border border-slate-200 bg-slate-50 p-4 lg:col-span-1">
+                  <div class="text-sm font-semibold">Your location</div>
+                  <div class="mt-2 space-y-1 text-xs text-slate-700">
+                    <div><span class="text-slate-500">Lat:</span> <span class="mono" id="vLat">—</span></div>
+                    <div><span class="text-slate-500">Lng:</span> <span class="mono" id="vLng">—</span></div>
+                    <div><span class="text-slate-500">Accuracy:</span> <span class="mono" id="vAcc">—</span></div>
+                  </div>
+                  <div class="mt-3">
+                    <a id="mapsLink" class="text-xs font-semibold text-emerald-700 hover:text-emerald-900" href="#" target="_blank" rel="noreferrer">Open in maps</a>
+                  </div>
+                  <div class="mt-4 rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-600">
+                    <div class="font-semibold text-slate-800">How time is estimated</div>
+                    <p class="mt-1">Time = distance ÷ average speed (30 km/h). For accurate travel time, integrate a routing API later.</p>
+                  </div>
+                </div>
+
+                <div class="lg:col-span-2">
+                  <div id="vetsWrap" class="grid gap-3 sm:grid-cols-2"></div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- NGO pages -->
+          <section id="pageNgoToday" class="hidden">
+            <div class="rounded-2xl border border-slate-200 bg-white p-6 soft-shadow">
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 class="text-lg font-bold">NGO / Hospital — Today’s Requests</h2>
+                  <p class="mt-1 text-sm text-slate-600">Update checkpoints: Captured → Treatment Done → Released to habitat.</p>
+                </div>
+                <button id="btnRefreshNgo" class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-50 focus-ring">Refresh</button>
+              </div>
+              <div class="mt-5" id="ngoTodayWrap"></div>
+            </div>
+          </section>
+
+          <section id="pageNgoReports" class="hidden">
+            <div class="rounded-2xl border border-slate-200 bg-white p-6 soft-shadow">
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 class="text-lg font-bold">NGO / Hospital — Edit Treatment Reports</h2>
+                  <p class="mt-1 text-sm text-slate-600">Only NGO/Hospital can edit the medical summary/cause.</p>
+                </div>
+                <div class="flex gap-2">
+                  <button id="btnAIDraftReport" class="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 focus-ring">AI: Draft report summary</button>
+                  <button id="btnSaveReport" class="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 focus-ring">Save</button>
+                </div>
+              </div>
+
+              <div class="mt-5 grid gap-4 lg:grid-cols-3">
+                <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <div class="text-sm font-semibold">Select request</div>
+                  <select id="ngoReportSelect" class="mt-3 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus-ring"></select>
+                  <div class="mt-3 text-xs text-slate-600">Choose a token to edit its report. Released requests should have a final summary.</div>
+                </div>
+
+                <div class="lg:col-span-2 rounded-xl border border-slate-200 p-4">
+                  <div class="grid gap-3 sm:grid-cols-2">
+                    <label class="block">
+                      <span class="text-xs font-medium text-slate-700">Main cause (short)</span>
+                      <input id="reportCause" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus-ring" placeholder="Accident / Infection / Malnutrition..." />
+                    </label>
+                    <label class="block">
+                      <span class="text-xs font-medium text-slate-700">Time taken for treatment</span>
+                      <input id="reportTimeTaken" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus-ring" placeholder="e.g., 3 days" />
+                    </label>
+                    <label class="block sm:col-span-2">
+                      <span class="text-xs font-medium text-slate-700">Treatment summary (what was done)</span>
+                      <textarea id="reportSummary" rows="6" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus-ring" placeholder="Wound cleaned, antibiotics administered, splint applied... Only essentials."></textarea>
+                    </label>
+                    <label class="block sm:col-span-2">
+                      <span class="text-xs font-medium text-slate-700">Internal notes (optional, not shown to public)</span>
+                      <textarea id="reportInternal" rows="3" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus-ring" placeholder="Follow-up required, temperament notes... (NGO only)"></textarea>
+                    </label>
+                  </div>
+                  <div class="mt-3 text-xs text-slate-600">Saving updates Firestore (if configured) or localStorage (fallback).</div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section id="pageNgoAnalytics" class="hidden">
+            <div class="rounded-2xl border border-slate-200 bg-white p-6 soft-shadow">
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 class="text-lg font-bold">NGO / Hospital — Weekly & Monthly Panel</h2>
+                  <p class="mt-1 text-sm text-slate-600">Review treatment history and download a PDF summary.</p>
+                </div>
+                <div class="flex gap-2">
+                  <button id="btnRefreshAnalytics" class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-50 focus-ring">Refresh</button>
+                  <button id="btnDownloadAnalyticsPdf" class="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 focus-ring">Download PDF</button>
+                </div>
+              </div>
+
+              <div class="mt-5 grid gap-4 lg:grid-cols-3">
+                <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <div class="text-sm font-semibold">KPIs</div>
+                  <div class="mt-3 space-y-2 text-xs text-slate-700">
+                    <div class="flex justify-between"><span class="text-slate-500">This week</span><span class="mono" id="kpiWeek">—</span></div>
+                    <div class="flex justify-between"><span class="text-slate-500">This month</span><span class="mono" id="kpiMonth">—</span></div>
+                    <div class="flex justify-between"><span class="text-slate-500">Released</span><span class="mono" id="kpiReleased">—</span></div>
+                    <div class="flex justify-between"><span class="text-slate-500">Avg time to treat (hrs)</span><span class="mono" id="kpiAvg">—</span></div>
+                  </div>
+                </div>
+                <div class="lg:col-span-2">
+                  <div class="overflow-hidden rounded-xl border border-slate-200">
+                    <table class="min-w-full divide-y divide-slate-200">
+                      <thead class="bg-slate-50">
+                        <tr>
+                          <th class="px-3 py-2 text-left text-xs font-semibold text-slate-700">Token</th>
+                          <th class="px-3 py-2 text-left text-xs font-semibold text-slate-700">Animal</th>
+                          <th class="px-3 py-2 text-left text-xs font-semibold text-slate-700">Reporter Phone</th>
+                          <th class="px-3 py-2 text-left text-xs font-semibold text-slate-700">Cause</th>
+                          <th class="px-3 py-2 text-left text-xs font-semibold text-slate-700">Time</th>
+                          <th class="px-3 py-2 text-left text-xs font-semibold text-slate-700">Captured location</th>
+                        </tr>
+                      </thead>
+                      <tbody id="analyticsTbody" class="divide-y divide-slate-200 bg-white"></tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </section>
+
+          <!-- Admin pages -->
+          <section id="pageAdminDashboard" class="hidden">
+            <div class="rounded-2xl border border-slate-200 bg-white p-6 soft-shadow">
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 class="text-lg font-bold">Admin — Oversight Dashboard</h2>
+                  <p class="mt-1 text-sm text-slate-600">Admin tools for data: exports, cleanup, and oversight KPIs.</p>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                  <button id="btnAdminRefresh" class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-50 focus-ring">Refresh</button>
+                  <button id="btnAdminPdf" class="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 focus-ring">Download PDF</button>
+                </div>
+              </div>
+
+              <div class="mt-5 grid gap-4 lg:grid-cols-3">
+                <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <div class="text-sm font-semibold">KPIs</div>
+                  <div class="mt-3 space-y-2 text-xs text-slate-700">
+                    <div class="flex justify-between"><span class="text-slate-500">Total requests</span><span class="mono" id="aTotal">—</span></div>
+                    <div class="flex justify-between"><span class="text-slate-500">Requested</span><span class="mono" id="aRequested">—</span></div>
+                    <div class="flex justify-between"><span class="text-slate-500">Captured</span><span class="mono" id="aCaptured">—</span></div>
+                    <div class="flex justify-between"><span class="text-slate-500">Treated</span><span class="mono" id="aTreated">—</span></div>
+                    <div class="flex justify-between"><span class="text-slate-500">Released</span><span class="mono" id="aReleased">—</span></div>
+                  </div>
+                </div>
+
+                <div class="lg:col-span-2 rounded-xl border border-slate-200 p-4">
+                  <div class="text-sm font-semibold">Data management</div>
+                  <div class="mt-3 flex flex-wrap gap-2">
+                    <button id="btnExportJson" class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-50 focus-ring">Export JSON</button>
+                    <label class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-50 focus-ring cursor-pointer">
+                      Import JSON
+                      <input id="adminImportFile" type="file" accept="application/json" class="hidden" />
+                    </label>
+                    <button id="btnClearLocal" class="rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-rose-700 focus-ring">Clear data</button>
+                  </div>
+
+                  <div class="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+                    <div class="font-semibold text-slate-800">Allowed staff emails (hardcoded)</div>
+                    <div class="mt-2 grid gap-2 sm:grid-cols-2">
+                      <div>
+                        <div class="text-[11px] font-semibold text-slate-600">Admin emails</div>
+                        <pre id="adminEmailList" class="mt-1 whitespace-pre-wrap text-xs mono"></pre>
+                      </div>
+                      <div>
+                        <div class="text-[11px] font-semibold text-slate-600">NGO emails</div>
+                        <pre id="ngoEmailList" class="mt-1 whitespace-pre-wrap text-xs mono"></pre>
+                      </div>
+                    </div>
+                    <div class="mt-2 text-[11px] text-slate-600">To change access, edit <span class="mono">ADMIN_EMAILS</span> and <span class="mono">NGO_EMAILS</span> arrays in <span class="mono">index.html</span>.</div>
+                  </div>
+                </div>
+
+                <div class="lg:col-span-3">
+                  <div class="overflow-hidden rounded-xl border border-slate-200">
+                    <table class="min-w-full divide-y divide-slate-200">
+                      <thead class="bg-slate-50">
+                        <tr>
+                          <th class="px-3 py-2 text-left text-xs font-semibold text-slate-700">Token</th>
+                          <th class="px-3 py-2 text-left text-xs font-semibold text-slate-700">Stage</th>
+                          <th class="px-3 py-2 text-left text-xs font-semibold text-slate-700">Animal</th>
+                          <th class="px-3 py-2 text-left text-xs font-semibold text-slate-700">Reporter</th>
+                          <th class="px-3 py-2 text-left text-xs font-semibold text-slate-700">Created</th>
+                        </tr>
+                      </thead>
+                      <tbody id="adminTbody" class="divide-y divide-slate-200 bg-white"></tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </section>
+
+          <section id="pageAccessBlocked" class="hidden">
+            <div class="rounded-2xl border border-rose-200 bg-rose-50 p-6 soft-shadow">
+              <h2 class="text-lg font-bold text-rose-900">Access blocked</h2>
+              <p class="mt-2 text-sm text-rose-900/80">Your account is authenticated, but the email is not in the allowed staff lists in code.</p>
+              <div class="mt-4 flex flex-wrap gap-2">
+                <button id="btnGoSignOut" class="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 focus-ring">Sign out</button>
+              </div>
+            </div>
+          </section>
+
+          <section id="pageAIHelper" class="hidden">
+            <div class="rounded-2xl border border-slate-200 bg-white p-6 soft-shadow">
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 class="text-lg font-bold">AI Helper (Chat-like)</h2>
+                  <p class="mt-1 text-sm text-slate-600">Ask for: triage steps, report wording, awareness messages, or workflow improvements.</p>
+                </div>
+                <div class="flex gap-2">
+                  <button id="btnClearChat" class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-50 focus-ring">Clear</button>
+                </div>
+              </div>
+
+              <div class="mt-5 grid gap-4 lg:grid-cols-3">
+                <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <div class="text-sm font-semibold">Context tools</div>
+                  <div class="mt-3 space-y-2 text-xs text-slate-700">
+                    <button id="btnContextFromCurrent" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-left font-semibold hover:bg-slate-50 focus-ring">Use current request context</button>
+                    <button id="btnContextAwareness" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-left font-semibold hover:bg-slate-50 focus-ring">Generate awareness poster copy</button>
+                    <button id="btnContextSecurity" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-left font-semibold hover:bg-slate-50 focus-ring">Suggest security improvements</button>
+                    <div class="rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-600">
+                      <div class="font-semibold text-slate-800">Fallback</div>
+                      <p class="mt-1">If no API key is saved, this assistant uses a local heuristic response generator.</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="lg:col-span-2">
+                  <div id="chat" class="h-[420px] overflow-auto rounded-xl border border-slate-200 bg-white p-4"></div>
+                  <div class="mt-3 flex gap-2">
+                    <input id="chatInput" class="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm focus-ring" placeholder="Type a message..." />
+                    <button id="btnSendChat" class="rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800 focus-ring">Send</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Toast container -->
+  <div class="no-print pointer-events-none fixed bottom-4 left-1/2 z-50 w-[min(92vw,560px)] -translate-x-1/2 space-y-2" id="toasts"></div>
+
+  <script type="module">
+    // =========================================================
+    // EDIT THESE IN CODE ONLY
+    // =========================================================
+    // Firebase config (Auth + Firestore)
+    // Paste your Firebase web app config here.
+    const FIREBASE_CONFIG = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT.firebaseapp.com",
+      projectId: "YOUR_PROJECT_ID",
+      appId: "YOUR_APP_ID"
+    };
+
+    // Firestore usage toggle (leave true for production)
+    const USE_FIRESTORE = true;
+
+    // Allowed staff emails (hardcoded allowlist)
+    const ADMIN_EMAILS = [
+      "admin@animalaid.org"
+    ].map(e => e.toLowerCase());
+
+    const NGO_EMAILS = [
+      "ngo.demo@org.com"
+    ].map(e => e.toLowerCase());
+
+    // -------------------------
+    // Utilities
+    // -------------------------
+    const $ = (sel) => document.querySelector(sel);
+
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+    function toast(message, type = 'info', ms = 3200) {
+      const colors = {
+        info: 'border-slate-200 bg-white',
+        ok: 'border-emerald-200 bg-emerald-50',
+        warn: 'border-amber-200 bg-amber-50',
+        err: 'border-rose-200 bg-rose-50',
+      };
+      const t = document.createElement('div');
+      t.className = `toast pointer-events-auto rounded-xl border ${colors[type] || colors.info} p-3 soft-shadow`;
+      t.innerHTML = `<div class="text-sm font-semibold">${escapeHtml(message)}</div>`;
+      $('#toasts').appendChild(t);
+      setTimeout(() => { t.remove(); }, ms);
+    }
+
+    function escapeHtml(str) {
+      return String(str ?? '').replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    }
+
+    function fmtDate(ts) {
+      if (!ts) return '—';
+      const d = (ts instanceof Date) ? ts : new Date(ts);
+      return d.toLocaleString(undefined, { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+    }
+
+    function toIsoDay(d = new Date()) {
+      const x = new Date(d);
+      x.setHours(0,0,0,0);
+      return x.toISOString();
+    }
+
+    function uniqueToken() {
+      const d = new Date();
+      const y = d.getFullYear();
+      const m = String(d.getMonth()+1).padStart(2,'0');
+      const day = String(d.getDate()).padStart(2,'0');
+      const rand = Math.random().toString(36).slice(2,6).toUpperCase();
+      return `AT-${y}${m}${day}-${rand}`;
+    }
+
+    function haversineKm(lat1, lon1, lat2, lon2) {
+      const R = 6371;
+      const toRad = (x) => x * Math.PI / 180;
+      const dLat = toRad(lat2-lat1);
+      const dLon = toRad(lon2-lon1);
+      const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+      return 2*R*Math.asin(Math.sqrt(a));
+    }
+
+    function minutesFromKm(km, speedKmh = 30) {
+      if (!isFinite(km)) return null;
+      return Math.max(1, Math.round((km / speedKmh) * 60));
+    }
+
+    function compressImageToDataUrl(imgOrCanvas, maxW = 900, maxH = 900, quality = 0.72) {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      let w, h;
+      if (imgOrCanvas instanceof HTMLCanvasElement) {
+        w = imgOrCanvas.width; h = imgOrCanvas.height;
+        const scale = Math.min(maxW/w, maxH/h, 1);
+        canvas.width = Math.round(w*scale);
+        canvas.height = Math.round(h*scale);
+        ctx.drawImage(imgOrCanvas, 0, 0, canvas.width, canvas.height);
+      } else {
+        w = imgOrCanvas.naturalWidth || imgOrCanvas.width;
+        h = imgOrCanvas.naturalHeight || imgOrCanvas.height;
+        const scale = Math.min(maxW/w, maxH/h, 1);
+        canvas.width = Math.round(w*scale);
+        canvas.height = Math.round(h*scale);
+        ctx.drawImage(imgOrCanvas, 0, 0, canvas.width, canvas.height);
+      }
+      return canvas.toDataURL('image/jpeg', quality);
+    }
+
+    function base64SizeBytes(dataUrl) {
+      if (!dataUrl) return 0;
+      const b64 = dataUrl.split(',')[1] || '';
+      return Math.round((b64.length * 3) / 4);
+    }
+
+    function looksConfiguredFirebase(cfg) {
+      if (!cfg) return false;
+      const s = (v) => String(v || '');
+      if (!cfg.apiKey || !cfg.authDomain || !cfg.appId) return false;
+      if (s(cfg.apiKey).includes('YOUR_')) return false;
+      if (s(cfg.authDomain).includes('YOUR_')) return false;
+      if (s(cfg.appId).includes('YOUR_')) return false;
+      return true;
+    }
+
+    function normalizeEmail(e) {
+      return String(e || '').trim().toLowerCase();
+    }
+
+    function safeClone(obj) {
+      return JSON.parse(JSON.stringify(obj));
+    }
+
+    // -------------------------
+    // App state
+    // -------------------------
+    const state = {
+      firebaseReady: false,
+      firestoreReady: false,
+      demoAuth: true,
+      role: null, // 'people' | 'ngo' | 'admin'
+      user: null, // { uid, email, displayName, photoURL, provider }
+      openaiKey: null,
+      currentPage: null,
+      currentContext: null,
+      cameraStream: null,
+    };
+
+    function setModeBadge() {
+      const badge = $('#modeBadge');
+      badge.classList.remove('hidden');
+      if (!state.firebaseReady || state.demoAuth) {
+        badge.textContent = 'Demo auth • Local data';
+        return;
+      }
+      if (state.firestoreReady) badge.textContent = 'Firebase Auth • Firestore';
+      else badge.textContent = 'Firebase Auth • Local data';
+    }
+
+    // -------------------------
+    // Local data store (fallback)
+    // -------------------------
+    const LOCAL_KEY = 'animalaid_local_v2';
+
+    function loadLocal() {
+      const raw = localStorage.getItem(LOCAL_KEY);
+      if (!raw) return { requests: [] };
+      try { return JSON.parse(raw); } catch { return { requests: [] }; }
+    }
+
+    function saveLocal(db) {
+      localStorage.setItem(LOCAL_KEY, JSON.stringify(db));
+    }
+
+    async function fsFallbackOnce(message = 'Firestore unavailable; falling back to local data.') {
+      if (state.firestoreReady) {
+        state.firestoreReady = false;
+        setModeBadge();
+        toast(message, 'warn', 5200);
+      }
+    }
+
+    // Hybrid store: Firestore (preferred) → localStorage (fallback)
+    const store = {
+      async listRequests() {
+        if (state.firestoreReady) {
+          try {
+            const { collection, getDocs } = fb._fsApi;
+            const snap = await getDocs(collection(fb.db, 'requests'));
+            return snap.docs.map(d => {
+              const data = d.data();
+              if (!data.token) data.token = d.id;
+              return data;
+            });
+          } catch (e) {
+            console.error(e);
+            await fsFallbackOnce();
+          }
+        }
+        const db = loadLocal();
+        return db.requests || [];
+      },
+      async getRequest(token) {
+        if (state.firestoreReady) {
+          try {
+            const { doc, getDoc } = fb._fsApi;
+            const snap = await getDoc(doc(fb.db, 'requests', token));
+            if (!snap.exists()) return null;
+            const data = snap.data();
+            if (!data.token) data.token = token;
+            return data;
+          } catch (e) {
+            console.error(e);
+            await fsFallbackOnce();
+          }
+        }
+        const all = await store.listRequests();
+        return all.find(r => r.token === token) || null;
+      },
+      async upsertRequest(req) {
+        if (state.firestoreReady) {
+          try {
+            const { doc, setDoc } = fb._fsApi;
+            const safeReq = safeClone(req);
+            // Firestore document limit is 1MB. Keep imageThumb small.
+            if (safeReq?.imageThumb && safeReq.imageThumb.length > 250_000) safeReq.imageThumb = '';
+            await setDoc(doc(fb.db, 'requests', req.token), safeReq, { merge: true });
+            return;
+          } catch (e) {
+            console.error(e);
+            await fsFallbackOnce();
+          }
+        }
+        const db = loadLocal();
+        db.requests = db.requests || [];
+        const idx = db.requests.findIndex(r => r.token === req.token);
+        if (idx >= 0) db.requests[idx] = req; else db.requests.push(req);
+        saveLocal(db);
+      },
+      async replaceAllRequests(requests) {
+        if (state.firestoreReady) {
+          try {
+            const { collection, getDocs, writeBatch, doc } = fb._fsApi;
+            // Delete existing
+            const snap = await getDocs(collection(fb.db, 'requests'));
+            const batch = writeBatch(fb.db);
+            snap.docs.forEach(d => batch.delete(doc(fb.db, 'requests', d.id)));
+            await batch.commit();
+
+            // Insert new
+            const batch2 = writeBatch(fb.db);
+            for (const r of (Array.isArray(requests) ? requests : [])) {
+              if (!r?.token) continue;
+              const safeReq = safeClone(r);
+              if (safeReq?.imageThumb && safeReq.imageThumb.length > 250_000) safeReq.imageThumb = '';
+              batch2.set(doc(fb.db, 'requests', r.token), safeReq);
+            }
+            await batch2.commit();
+            return;
+          } catch (e) {
+            console.error(e);
+            await fsFallbackOnce();
+          }
+        }
+        const db = loadLocal();
+        db.requests = Array.isArray(requests) ? requests : [];
+        saveLocal(db);
+      },
+      async clearAll() {
+        if (state.firestoreReady) {
+          try {
+            const { collection, getDocs, writeBatch, doc } = fb._fsApi;
+            const snap = await getDocs(collection(fb.db, 'requests'));
+            const batch = writeBatch(fb.db);
+            snap.docs.forEach(d => batch.delete(doc(fb.db, 'requests', d.id)));
+            await batch.commit();
+            return;
+          } catch (e) {
+            console.error(e);
+            await fsFallbackOnce();
+          }
+        }
+        saveLocal({ requests: [] });
+      },
+      async exportJson() {
+        const requests = await store.listRequests();
+        return JSON.stringify({ requests }, null, 2);
+      },
+      async importJson(text) {
+        const obj = JSON.parse(text);
+        if (!obj || typeof obj !== 'object') throw new Error('Invalid JSON');
+        if (!Array.isArray(obj.requests)) obj.requests = [];
+        await store.replaceAllRequests(obj.requests);
+      }
+    };
+
+    // -------------------------
+    // Firebase Auth + Firestore
+    // -------------------------
+    let fb = { app: null, auth: null, db: null, _authApi: null, _fsApi: null };
+
+    async function initFirebaseAuth() {
+      if (!looksConfiguredFirebase(FIREBASE_CONFIG)) {
+        state.firebaseReady = false;
+        state.firestoreReady = false;
+        state.demoAuth = true;
+        setModeBadge();
+        return;
+      }
+
+      try {
+        const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js');
+        const {
+          getAuth,
+          onAuthStateChanged,
+          GoogleAuthProvider,
+          signInWithPopup,
+          signInWithEmailAndPassword,
+          signOut
+        } = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js');
+
+        fb.app = initializeApp(FIREBASE_CONFIG);
+        fb.auth = getAuth(fb.app);
+        fb._authApi = { onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, signOut };
+
+        // Firestore
+        if (USE_FIRESTORE) {
+          try {
+            const {
+              getFirestore,
+              collection,
+              doc,
+              getDoc,
+              getDocs,
+              setDoc,
+              writeBatch
+            } = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
+
+            fb.db = getFirestore(fb.app);
+            fb._fsApi = { collection, doc, getDoc, getDocs, setDoc, writeBatch };
+            state.firestoreReady = true;
+          } catch (e) {
+            console.error(e);
+            fb.db = null;
+            fb._fsApi = null;
+            state.firestoreReady = false;
+            toast('Firestore init failed; using local data.', 'warn');
+          }
+        } else {
+          state.firestoreReady = false;
+        }
+
+        state.firebaseReady = true;
+        state.demoAuth = false;
+        setModeBadge();
+
+        fb._authApi.onAuthStateChanged(fb.auth, async (u) => {
+          if (!u) {
+            state.user = null;
+            state.role = null;
+            renderAuthState();
+            return;
+          }
+
+          const provider = (u.providerData && u.providerData[0] && u.providerData[0].providerId) || 'password';
+          const email = u.email || '';
+
+          state.user = {
+            uid: u.uid,
+            email,
+            displayName: u.displayName || email.split('@')[0] || 'User',
+            photoURL: u.photoURL,
+            provider
+          };
+
+          // Role selection
+          if (provider === 'google.com') {
+            state.role = 'people';
+          } else {
+            const e = normalizeEmail(email);
+            if (ADMIN_EMAILS.includes(e)) state.role = 'admin';
+            else if (NGO_EMAILS.includes(e)) state.role = 'ngo';
+            else state.role = null;
+          }
+
+          renderAuthState();
+        });
+
+      } catch (e) {
+        console.error(e);
+        state.firebaseReady = false;
+        state.firestoreReady = false;
+        state.demoAuth = true;
+        setModeBadge();
+        toast('Firebase init failed; using Demo auth + local data.', 'warn');
+      }
+    }
+
+    // -------------------------
+    // AI helper
+    // -------------------------
+    function getSavedOpenAIKey() {
+      const k = localStorage.getItem('animalaid_openai_key');
+      return k && k.trim() ? k.trim() : null;
+    }
+
+    async function aiChat(messages, options = {}) {
+      const key = state.openaiKey || getSavedOpenAIKey();
+      if (!key) return localHeuristicAI(messages);
+
+      const model = options.model || 'gpt-4o-mini';
+      const payload = {
+        model,
+        messages,
+        temperature: options.temperature ?? 0.4,
+      };
+
+      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${key}`
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        const text = await res.text().catch(()=> '');
+        throw new Error(`AI request failed (${res.status}): ${text.slice(0, 180)}`);
+      }
+      const data = await res.json();
+      return data.choices?.[0]?.message?.content?.trim() || '(no content)';
+    }
+
+    async function aiVisionOrTextTriage({ animalType, conditionText, imageDataUrl }) {
+      const key = state.openaiKey || getSavedOpenAIKey();
+      if (!key) return localTriageText(animalType, conditionText);
+
+      const model = 'gpt-4o-mini';
+      const content = [];
+      content.push({
+        type: 'text',
+        text: `You are a veterinary triage assistant. Provide a short triage assessment in bullet points.\n\nConstraints: do not give drug dosages; do not claim certainty; advise safe next steps and when to call professionals.\n\nAnimal type: ${animalType}\nSymptoms: ${conditionText || '(none)'}\nReturn format:\n- Likely issues (2-4)\n- Urgency level (Low/Medium/High/Emergency)\n- Safe next steps (5 bullets max)\n- Questions to ask reporter (3 bullets max)`
+      });
+      if (imageDataUrl) content.push({ type: 'image_url', image_url: { url: imageDataUrl } });
+
+      const payload = {
+        model,
+        messages: [
+          { role: 'system', content: 'You help coordinate animal rescue/treatment requests.' },
+          { role: 'user', content }
+        ],
+        temperature: 0.3,
+      };
+
+      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${key}`
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        const text = await res.text().catch(()=> '');
+        throw new Error(`AI request failed (${res.status}): ${text.slice(0, 180)}`);
+      }
+      const data = await res.json();
+      return data.choices?.[0]?.message?.content?.trim() || '(no content)';
+    }
+
+    function localHeuristicAI(messages) {
+      const last = messages[messages.length - 1]?.content || '';
+      const t = String(last).toLowerCase();
+      if (t.includes('security') || t.includes('auth')) {
+        return `Security tips (prototype):\n- Keep admin/NGO allowlists in code and rotate credentials if leaked.\n- In production, store role in backend (custom claims) and protect APIs server-side.\n- Do not store API keys in frontend for production; proxy via backend.\n- Validate form inputs and sanitize text shown in UI.\n- Add audit logs for checkpoint changes.`;
+      }
+      if (t.includes('awareness')) {
+        return `Awareness copy:\nTitle: Help Strays, Save Lives\n- If you see an injured animal, keep calm and keep distance.\n- Share exact location + clear photo.\n- Do not feed spicy/processed food. Provide water if safe.\n- Call the nearest animal hospital/NGO.\n- Track the case with your token for transparent updates.`;
+      }
+      return `Local AI (no key):\n- I can help you write clearer complaint text, suggest safe next steps, and summarize treatment reports.\n- Tip: include animal type, visible injuries, behavior, and exact landmark.`;
+    }
+
+    function localTriageText(animalType, conditionText) {
+      const t = String(conditionText || '').toLowerCase();
+      const flags = {
+        bleeding: /bleed|blood|wound|cut/.test(t),
+        limp: /limp|fracture|broken|leg|paw/.test(t),
+        notMoving: /not moving|unconscious|faint|collapsed/.test(t),
+        breathing: /breath|pant|choking/.test(t),
+        vomiting: /vomit|diarrhea|poison/.test(t),
+        aggressive: /aggressive|biting|rabies|foaming/.test(t)
+      };
+
+      let urgency = 'Medium';
+      if (flags.notMoving || flags.breathing || flags.bleeding || flags.aggressive) urgency = 'High';
+      if (flags.aggressive && flags.notMoving) urgency = 'Emergency';
+
+      const likely = [];
+      if (flags.bleeding) likely.push('Open wound / bleeding');
+      if (flags.limp) likely.push('Limb injury (sprain/fracture)');
+      if (flags.vomiting) likely.push('Gastro/poisoning risk');
+      if (flags.breathing) likely.push('Respiratory distress / heat stress');
+      if (flags.notMoving) likely.push('Shock / severe trauma');
+      if (likely.length === 0) likely.push('General distress / dehydration');
+
+      const steps = [
+        'Keep a safe distance; avoid sudden movements.',
+        'If safe, provide clean water; do not force feed.',
+        'Share exact landmark and stay nearby (at a safe distance) until help arrives.',
+        'Do not attempt complex handling; use a towel/box only if trained.',
+        'Call local NGO/vet urgently if breathing issues, bleeding, or unconsciousness.'
+      ];
+      const questions = [
+        'Is the animal responsive (stands, reacts to sound)?',
+        'Any visible bleeding, fracture, or swelling?',
+        'How long has it been in this condition?'
+      ];
+
+      return `Local triage (no AI key)\n\n- Likely issues: ${likely.slice(0,4).join(', ')}\n- Urgency level: ${urgency}\n- Safe next steps:\n  • ${steps.join('\n  • ')}\n- Questions to ask reporter:\n  • ${questions.join('\n  • ')}\n\nNote: This is not medical advice; consult a licensed vet/NGO.`;
+    }
+
+    // -------------------------
+    // UI: navigation
+    // -------------------------
+    function showView(id) {
+      ['#viewLanding', '#viewApp'].forEach(sel => $(sel).classList.add('hidden'));
+      $(id).classList.remove('hidden');
+    }
+
+    function pagesAll() {
+      return [
+        'pagePeopleNew', 'pagePeopleRequests', 'pagePeopleReports', 'pagePeopleVets',
+        'pageNgoToday', 'pageNgoReports', 'pageNgoAnalytics',
+        'pageAdminDashboard',
+        'pageAIHelper', 'pageAccessBlocked'
+      ];
+    }
+
+    function showPage(pageId) {
+      pagesAll().forEach(id => { const el = document.getElementById(id); if (el) el.classList.add('hidden'); });
+      const el = document.getElementById(pageId);
+      if (el) el.classList.remove('hidden');
+      state.currentPage = pageId;
+    }
+
+    function setNav(items) {
+      const nav = $('#nav');
+      nav.innerHTML = '';
+      for (const it of items) {
+        const b = document.createElement('button');
+        b.className = 'w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-50 focus-ring';
+        b.textContent = it.label;
+        b.addEventListener('click', async () => {
+          showPage(it.page);
+          await it.onShow?.();
+        });
+        nav.appendChild(b);
+      }
+    }
+
+    function renderUserChip() {
+      if (!state.user) {
+        $('#userChip').classList.add('hidden');
+        $('#btnSignOut').classList.add('hidden');
+        return;
+      }
+
+      $('#userChip').classList.remove('hidden');
+      $('#btnSignOut').classList.remove('hidden');
+
+      $('#userName').textContent = state.user.displayName || state.user.email || 'User';
+      $('#userRole').textContent = state.role ? `${state.role.toUpperCase()} portal` : 'Access blocked';
+      const avatar = $('#userAvatar');
+      avatar.style.backgroundImage = state.user.photoURL ? `url(${state.user.photoURL})` : '';
+      avatar.style.backgroundSize = 'cover';
+      avatar.style.backgroundPosition = 'center';
+      if (!state.user.photoURL) avatar.className = 'h-7 w-7 rounded-full bg-slate-200';
+    }
+
+    async function renderAuthState() {
+      renderUserChip();
+
+      if (!state.user) {
+        showView('#viewLanding');
+        return;
+      }
+
+      showView('#viewApp');
+
+      const role = state.role;
+      if (!role) {
+        $('#sideRoleTitle').textContent = 'Access blocked';
+        $('#sideSub').textContent = 'This email is not allowed for NGO/Admin.';
+        setNav([{ label: 'Access blocked', page: 'pageAccessBlocked' }]);
+        showPage('pageAccessBlocked');
+        return;
+      }
+
+      if (role === 'people') {
+        $('#sideRoleTitle').textContent = 'People Portal';
+        $('#sideSub').textContent = 'Report and track animals';
+        setNav([
+          { label: 'New report', page: 'pagePeopleNew', onShow: async () => { await hydrateReporterDefaults(); } },
+          { label: 'Requests', page: 'pagePeopleRequests', onShow: async () => { await renderPeopleRequests(); } },
+          { label: 'Completed reports', page: 'pagePeopleReports', onShow: async () => { await renderPeopleReports(); } },
+          { label: 'Nearby vets', page: 'pagePeopleVets' },
+        ]);
+        showPage('pagePeopleNew');
+        hydrateReporterDefaults();
+      }
+
+      if (role === 'ngo') {
+        $('#sideRoleTitle').textContent = 'NGO / Hospital';
+        $('#sideSub').textContent = 'Operate daily requests';
+        setNav([
+          { label: 'Today’s requests', page: 'pageNgoToday', onShow: async () => { await renderNgoToday(); } },
+          { label: 'Edit reports', page: 'pageNgoReports', onShow: async () => { await loadNgoReportSelect(); } },
+          { label: 'Weekly / monthly panel', page: 'pageNgoAnalytics', onShow: async () => { await renderAnalytics(); } },
+        ]);
+        showPage('pageNgoToday');
+        renderNgoToday();
+      }
+
+      if (role === 'admin') {
+        $('#sideRoleTitle').textContent = 'Admin';
+        $('#sideSub').textContent = 'Oversight & data tools';
+        setNav([
+          { label: 'Dashboard', page: 'pageAdminDashboard', onShow: async () => { await renderAdminDashboard(); } },
+          { label: 'Today’s requests (view)', page: 'pageNgoToday', onShow: async () => { await renderNgoToday(); } },
+          { label: 'Weekly / monthly panel', page: 'pageNgoAnalytics', onShow: async () => { await renderAnalytics(); } },
+        ]);
+        showPage('pageAdminDashboard');
+        renderAdminDashboard();
+      }
+    }
+
+    // -------------------------
+    // Auth
+    // -------------------------
+    function demoSetUser({ role, email, displayName, provider }) {
+      const uidKey = `animalaid_demo_uid_${role}`;
+      let uid = localStorage.getItem(uidKey);
+      if (!uid) {
+        uid = `${role}_` + Math.random().toString(36).slice(2);
+        localStorage.setItem(uidKey, uid);
+      }
+      state.user = { uid, email, displayName, photoURL: '', provider };
+      state.role = role;
+      renderAuthState();
+    }
+
+    // Demo studio helpers
+    function approxUserLocationOrDefault() {
+      const lat = parseFloat($('#lat')?.value);
+      const lng = parseFloat($('#lng')?.value);
+      if (isFinite(lat) && isFinite(lng)) return { lat, lng, acc: parseFloat($('#acc')?.value) || null };
+      // Default: New Delhi (so maps link works)
+      return { lat: 28.6139, lng: 77.2090, acc: null };
+    }
+
+    function seededRequest({ token, createdAt, createdByUid, createdByEmail, reporterName, reporterPhone, animalType, conditionText, stage, locNote, lat, lng, report }) {
+      const base = {
+        token,
+        createdAt,
+        day: toIsoDay(new Date(createdAt)),
+        createdByUid,
+        createdByEmail,
+        reporterName,
+        reporterPhone,
+        animalType,
+        conditionText,
+        aiAssessment: '',
+        location: { lat, lng, acc: null, note: locNote },
+        imageThumb: '',
+        status: {
+          requestedAt: createdAt,
+          capturedAt: null,
+          treatedAt: null,
+          releasedAt: null,
+          stage: 'requested'
+        },
+        report: {
+          cause: report?.cause || '',
+          timeTaken: report?.timeTaken || '',
+          summary: report?.summary || '',
+          internal: report?.internal || '',
+          updatedAt: report?.updatedAt || null,
+          updatedBy: report?.updatedBy || ''
+        }
+      };
+
+      const now = Date.now();
+      // Create believable checkpoint times
+      if (stage === 'captured' || stage === 'treated' || stage === 'released') {
+        base.status.capturedAt = createdAt + 25 * 60e3;
+      }
+      if (stage === 'treated' || stage === 'released') {
+        base.status.treatedAt = createdAt + 3.5 * 3600e3;
+      }
+      if (stage === 'released') {
+        base.status.releasedAt = createdAt + 9 * 3600e3;
+        base.report.updatedAt = base.report.updatedAt || (createdAt + 9.2 * 3600e3);
+        base.report.updatedBy = base.report.updatedBy || 'ngo.demo@org.com';
+        base.report.summary = base.report.summary || 'Stabilized, wound cleaned, antibiotics given (no dosage), monitored, and released after recovery.';
+        base.report.timeTaken = base.report.timeTaken || '9 hours';
+        base.report.cause = base.report.cause || 'Road accident / injury';
+      }
+
+      base.status.stage = stage;
+      if (base.report.updatedAt == null && stage !== 'requested') base.report.updatedAt = now;
+      return base;
+    }
+
+    async function seedDemoData() {
+      // Use demo people identity (consistent) so requests show up in People portal
+      const peopleUidKey = `animalaid_demo_uid_people`;
+      let peopleUid = localStorage.getItem(peopleUidKey);
+      if (!peopleUid) {
+        peopleUid = `people_` + Math.random().toString(36).slice(2);
+        localStorage.setItem(peopleUidKey, peopleUid);
+      }
+
+      const loc = approxUserLocationOrDefault();
+      const now = Date.now();
+      const baseLat = loc.lat;
+      const baseLng = loc.lng;
+
+      const samples = [
+        seededRequest({
+          token: uniqueToken(),
+          createdAt: now - 2 * 3600e3,
+          createdByUid: peopleUid,
+          createdByEmail: 'people.demo@gmail.com',
+          reporterName: 'Demo People',
+          reporterPhone: '+91 99999 11111',
+          animalType: 'Dog',
+          conditionText: 'Limping, possible paw injury near roadside.',
+          stage: 'requested',
+          locNote: 'Near main road / bus stop',
+          lat: baseLat + 0.012,
+          lng: baseLng - 0.010,
+          report: {}
+        }),
+        seededRequest({
+          token: uniqueToken(),
+          createdAt: now - 10 * 3600e3,
+          createdByUid: peopleUid,
+          createdByEmail: 'people.demo@gmail.com',
+          reporterName: 'Demo People',
+          reporterPhone: '+91 99999 22222',
+          animalType: 'Cat',
+          conditionText: 'Small bleeding wound; hiding under a car.',
+          stage: 'captured',
+          locNote: 'Parking area near market',
+          lat: baseLat - 0.006,
+          lng: baseLng + 0.005,
+          report: { cause: 'Minor laceration', timeTaken: '', summary: '' }
+        }),
+        seededRequest({
+          token: uniqueToken(),
+          createdAt: now - 30 * 3600e3,
+          createdByUid: peopleUid,
+          createdByEmail: 'people.demo@gmail.com',
+          reporterName: 'Demo People',
+          reporterPhone: '+91 99999 33333',
+          animalType: 'Dog',
+          conditionText: 'Weak, dehydrated, not eating properly.',
+          stage: 'released',
+          locNote: 'Near park gate',
+          lat: baseLat + 0.002,
+          lng: baseLng + 0.001,
+          report: { cause: 'Dehydration / weakness', timeTaken: '1 day', summary: 'Fluids provided, monitored vitals, provided nutrition, and released after stabilization.' }
+        })
+      ];
+
+      // Merge with existing without duplicates
+      const existing = await store.listRequests();
+      const map = new Map(existing.map(r => [r.token, r]));
+      for (const r of samples) map.set(r.token, r);
+      await store.replaceAllRequests([...map.values()]);
+
+      toast('Sample requests loaded.', 'ok');
+    }
+
+    async function clearAllRequestsDemo() {
+      if (!confirm('Clear all requests/reports?')) return;
+      await store.clearAll();
+      toast('All requests cleared.', 'ok');
+    }
+
+    async function signInPeopleGoogle() {
+      if (!state.firebaseReady || state.demoAuth) {
+        demoSetUser({ role: 'people', email: 'people.demo@gmail.com', displayName: 'Demo People', provider: 'google.com' });
+        toast('Signed in (demo people).', 'ok');
+        return;
+      }
+      try {
+        const { GoogleAuthProvider, signInWithPopup } = fb._authApi;
+        const provider = new GoogleAuthProvider();
+        await signInWithPopup(fb.auth, provider);
+      } catch (e) {
+        console.error(e);
+        toast(e.message || 'Google sign-in failed', 'err');
+      }
+    }
+
+    async function signInStaffEmail(desiredRole) {
+      const email = $('#email').value.trim();
+      const password = $('#password').value;
+
+      if (!email || !password) {
+        toast('Enter email and password.', 'warn');
+        return;
+      }
+
+      const emailNorm = normalizeEmail(email);
+      const allowed = desiredRole === 'admin' ? ADMIN_EMAILS.includes(emailNorm) : NGO_EMAILS.includes(emailNorm);
+
+      if (!allowed) {
+        toast(`Email not allowed for ${desiredRole.toUpperCase()} portal. Edit allowlist in code.`, 'err', 5200);
+        return;
+      }
+
+      if (!state.firebaseReady || state.demoAuth) {
+        demoSetUser({ role: desiredRole, email, displayName: email.split('@')[0], provider: 'password' });
+        toast(`Signed in (demo ${desiredRole}).`, 'ok');
+        return;
+      }
+
+      try {
+        const { signInWithEmailAndPassword } = fb._authApi;
+        await signInWithEmailAndPassword(fb.auth, email, password);
+        await sleep(200);
+      } catch (e) {
+        console.error(e);
+        toast(e.message || 'Email login failed', 'err');
+      }
+    }
+
+    async function doSignOut() {
+      stopCamera();
+      if (!state.firebaseReady || state.demoAuth) {
+        state.user = null;
+        state.role = null;
+        renderAuthState();
+        toast('Signed out.', 'ok');
+        return;
+      }
+      try {
+        const { signOut } = fb._authApi;
+        await signOut(fb.auth);
+      } catch (e) {
+        console.error(e);
+        toast('Sign out failed', 'err');
+      }
+    }
+
+    // -------------------------
+    // People Portal: New report
+    // -------------------------
+    async function hydrateReporterDefaults() {
+      if (state.user?.displayName) $('#reporterName').value = state.user.displayName;
+      if (!$('#lat').value || !$('#lng').value) {
+        try { await fillLocation(); } catch { /* ignore */ }
+      }
+    }
+
+    async function fillLocation() {
+      if (!('geolocation' in navigator)) {
+        toast('Geolocation not supported by this browser', 'err');
+        throw new Error('no geolocation');
+      }
+      return new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            const { latitude, longitude, accuracy } = pos.coords;
+            $('#lat').value = latitude.toFixed(6);
+            $('#lng').value = longitude.toFixed(6);
+            $('#acc').value = Math.round(accuracy);
+            toast('Location filled from device.', 'ok');
+            resolve(pos);
+          },
+          (err) => {
+            toast(err.message || 'Location permission denied', 'warn');
+            reject(err);
+          },
+          { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 }
+        );
+      });
+    }
+
+    function resetNewReport() {
+      stopCamera();
+      $('#animalType').value = 'Dog';
+      $('#conditionText').value = '';
+      $('#reporterPhone').value = '';
+      $('#locNote').value = '';
+      $('#aiOutput').textContent = '(AI suggestions will appear here)';
+      $('#aiStatus').textContent = 'Ready';
+      ['#lat','#lng','#acc'].forEach(s => $(s).value = '');
+      setPreview(null);
+      state.currentContext = null;
+    }
+
+    function setPreview(dataUrl) {
+      const img = $('#imgPreview');
+      const canvas = $('#canvas');
+      const video = $('#video');
+      if (dataUrl) {
+        img.src = dataUrl;
+        img.classList.remove('hidden');
+        canvas.classList.add('hidden');
+        video.classList.add('hidden');
+      } else {
+        img.src = '';
+        img.classList.add('hidden');
+      }
+    }
+
+    async function startCamera() {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        toast('Camera not supported in this browser', 'err');
+        return;
+      }
+      try {
+        state.cameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+        const video = $('#video');
+        video.srcObject = state.cameraStream;
+        video.classList.remove('hidden');
+        $('#canvas').classList.add('hidden');
+        $('#imgPreview').classList.add('hidden');
+        toast('Camera started.', 'ok');
+      } catch (e) {
+        console.error(e);
+        toast('Camera permission denied or unavailable.', 'warn');
+      }
+    }
+
+    function stopCamera() {
+      if (state.cameraStream) {
+        state.cameraStream.getTracks().forEach(t => t.stop());
+      }
+      state.cameraStream = null;
+      $('#video').classList.add('hidden');
+    }
+
+    function capturePhoto() {
+      const video = $('#video');
+      if (video.classList.contains('hidden') || !video.videoWidth) {
+        toast('Start camera first.', 'warn');
+        return null;
+      }
+      const canvas = $('#canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0);
+      const dataUrl = compressImageToDataUrl(canvas, 900, 900, 0.74);
+      const bytes = base64SizeBytes(dataUrl);
+      if (bytes > 750_000) toast('Image is large; it will be compressed automatically.', 'warn');
+      setPreview(dataUrl);
+      return dataUrl;
+    }
+
+    async function handleFileUpload(file) {
+      if (!file) return;
+      const img = new Image();
+      img.onload = () => {
+        const dataUrl = compressImageToDataUrl(img, 900, 900, 0.74);
+        setPreview(dataUrl);
+        toast('Image loaded.', 'ok');
+      };
+      img.src = URL.createObjectURL(file);
+    }
+
+    async function aiAnalyzeNew() {
+      const animalType = $('#animalType').value;
+      const conditionText = $('#conditionText').value;
+      const imageDataUrl = $('#imgPreview').classList.contains('hidden') ? null : $('#imgPreview').src;
+
+      $('#aiStatus').textContent = 'Analyzing...';
+      try {
+        const out = await aiVisionOrTextTriage({ animalType, conditionText, imageDataUrl });
+        $('#aiOutput').textContent = out;
+        $('#aiStatus').textContent = 'Done';
+      } catch (e) {
+        console.error(e);
+        $('#aiOutput').textContent = localTriageText(animalType, conditionText);
+        $('#aiStatus').textContent = 'Fallback used';
+        toast(e.message || 'AI failed; used fallback', 'warn');
+      }
+    }
+
+    async function aiDraftComplaint() {
+      const animalType = $('#animalType').value;
+      const conditionText = $('#conditionText').value;
+      const locNote = $('#locNote').value;
+      const lat = $('#lat').value;
+      const lng = $('#lng').value;
+
+      $('#aiStatus').textContent = 'Drafting...';
+      try {
+        const out = await aiChat([
+          { role: 'system', content: 'You write clear complaint/report text for an animal rescue request. Keep it short and actionable.' },
+          { role: 'user', content: `Draft a concise complaint for an injured animal request.\nAnimal: ${animalType}\nCondition: ${conditionText || '(none)'}\nLocation note: ${locNote || '(none)'}\nCoordinates: ${lat || '—'}, ${lng || '—'}\nInclude: urgency, landmark, and callback request. Max 1100 characters.` }
+        ], { temperature: 0.4 });
+        $('#aiOutput').textContent = out;
+        $('#aiStatus').textContent = 'Done';
+        if (!$('#conditionText').value.trim()) $('#conditionText').value = out;
+      } catch (e) {
+        console.error(e);
+        $('#aiStatus').textContent = 'Fallback used';
+        $('#aiOutput').textContent = `Complaint draft (local):\nInjured ${animalType} reported. Condition: ${conditionText || 'needs assistance'}. Location: ${locNote || 'see coordinates'}. Coordinates: ${lat || '—'}, ${lng || '—'}. Please dispatch a rescue/treatment team urgently. Reporter available for guidance.`;
+      }
+    }
+
+    async function submitRequest() {
+      if (state.role !== 'people') {
+        toast('Only People portal can create requests.', 'err');
+        return;
+      }
+
+      const token = uniqueToken();
+      const createdAt = Date.now();
+
+      const animalType = $('#animalType').value;
+      const reporterName = $('#reporterName').value.trim() || state.user?.displayName || 'Anonymous';
+      const reporterPhone = $('#reporterPhone').value.trim();
+      const conditionText = $('#conditionText').value.trim();
+      const lat = parseFloat($('#lat').value);
+      const lng = parseFloat($('#lng').value);
+      const acc = parseFloat($('#acc').value);
+      const locNote = $('#locNote').value.trim();
+
+      if (!conditionText) {
+        toast('Please describe the condition.', 'warn');
+        return;
+      }
+      if (!isFinite(lat) || !isFinite(lng)) {
+        toast('Please allow location or enter coordinates.', 'warn');
+        return;
+      }
+
+      const aiAssessment = $('#aiOutput').textContent?.startsWith('(') ? '' : $('#aiOutput').textContent;
+      const imageDataUrl = $('#imgPreview').classList.contains('hidden') ? '' : $('#imgPreview').src;
+      const imageBytes = base64SizeBytes(imageDataUrl);
+      const imageSafe = imageBytes > 850_000 ? '' : imageDataUrl;
+
+      const req = {
+        token,
+        createdAt,
+        day: toIsoDay(new Date(createdAt)),
+        createdByUid: state.user?.uid || 'local',
+        createdByEmail: state.user?.email || '',
+        reporterName,
+        reporterPhone,
+        animalType,
+        conditionText,
+        aiAssessment,
+        location: { lat, lng, acc: isFinite(acc) ? acc : null, note: locNote },
+        imageThumb: imageSafe,
+        status: {
+          requestedAt: createdAt,
+          capturedAt: null,
+          treatedAt: null,
+          releasedAt: null,
+          stage: 'requested'
+        },
+        report: {
+          cause: '',
+          timeTaken: '',
+          summary: '',
+          internal: '',
+          updatedAt: null,
+          updatedBy: ''
+        }
+      };
+
+      await store.upsertRequest(req);
+      state.currentContext = req;
+      toast(`Request submitted: ${token}`, 'ok');
+      showPage('pagePeopleRequests');
+      await renderPeopleRequests();
+    }
+
+    // -------------------------
+    // People Portal: Requests + Reports
+    // -------------------------
+    function statusBadge(req) {
+      const s = req.status?.stage || 'requested';
+      const map = {
+        requested: 'bg-amber-100 text-amber-800 border-amber-200',
+        captured: 'bg-blue-100 text-blue-800 border-blue-200',
+        treated: 'bg-violet-100 text-violet-800 border-violet-200',
+        released: 'bg-emerald-100 text-emerald-800 border-emerald-200'
+      };
+      const label = {
+        requested: 'Requested',
+        captured: 'Captured',
+        treated: 'Treatment done',
+        released: 'Released'
+      };
+      return `<span class="rounded-full border px-2 py-1 text-[11px] font-semibold ${map[s] || 'bg-slate-100 text-slate-800 border-slate-200'}">${label[s] || s}</span>`;
+    }
+
+    function checkpointRow(label, ts) {
+      return `<div class="flex items-center justify-between gap-3 text-xs">
+        <div class="text-slate-600">${escapeHtml(label)}</div>
+        <div class="mono text-slate-900">${escapeHtml(fmtDate(ts))}</div>
+      </div>`;
+    }
+
+    function requestCard(req, opts = {}) {
+      const showActions = opts.showActions;
+      const canUpdate = opts.canUpdate;
+
+      const loc = req.location || {};
+      const mapUrl = (isFinite(loc.lat) && isFinite(loc.lng)) ? `https://www.google.com/maps?q=${loc.lat},${loc.lng}` : '#';
+
+      const timeline = `
+        <div class="mt-3 space-y-2">
+          ${checkpointRow('Request created', req.status?.requestedAt)}
+          ${checkpointRow('Captured', req.status?.capturedAt)}
+          ${checkpointRow('Treatment done', req.status?.treatedAt)}
+          ${checkpointRow('Released', req.status?.releasedAt)}
+        </div>
+      `;
+
+      const actions = !showActions ? '' : `
+        <div class="mt-4 flex flex-wrap gap-2">
+          <button data-act="captured" data-token="${req.token}" class="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 focus-ring" ${canUpdate ? '' : 'disabled'}>Mark Captured</button>
+          <button data-act="treated" data-token="${req.token}" class="rounded-lg bg-violet-600 px-3 py-2 text-xs font-semibold text-white hover:bg-violet-700 focus-ring" ${canUpdate ? '' : 'disabled'}>Mark Treatment Done</button>
+          <button data-act="released" data-token="${req.token}" class="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700 focus-ring" ${canUpdate ? '' : 'disabled'}>Mark Released</button>
+          <button data-act="edit" data-token="${req.token}" class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold hover:bg-slate-50 focus-ring">Edit Report</button>
+        </div>
+      `;
+
+      const img = req.imageThumb ? `<img class="h-20 w-20 rounded-xl border border-slate-200 object-cover" src="${req.imageThumb}" alt="thumb" />` : `<div class="h-20 w-20 rounded-xl border border-slate-200 bg-slate-50"></div>`;
+
+      return `
+      <div class="rounded-2xl border border-slate-200 bg-white p-4 soft-shadow">
+        <div class="flex items-start justify-between gap-3">
+          <div class="flex items-start gap-3">
+            ${img}
+            <div class="min-w-0">
+              <div class="flex flex-wrap items-center gap-2">
+                <div class="mono text-xs font-bold">${escapeHtml(req.token)}</div>
+                ${statusBadge(req)}
+              </div>
+              <div class="mt-1 text-sm font-semibold">${escapeHtml(req.animalType || 'Animal')} — ${escapeHtml(req.reporterName || 'Reporter')}</div>
+              <div class="mt-1 text-xs text-slate-600">${escapeHtml(req.conditionText || '')}</div>
+              <div class="mt-2 flex flex-wrap items-center gap-3 text-xs">
+                <div><span class="text-slate-500">Created:</span> <span class="mono">${escapeHtml(fmtDate(req.createdAt))}</span></div>
+                <a class="font-semibold text-emerald-700 hover:text-emerald-900" target="_blank" rel="noreferrer" href="${mapUrl}">Open location</a>
+              </div>
+              ${loc.note ? `<div class="mt-1 text-xs text-slate-600"><span class="text-slate-500">Landmark:</span> ${escapeHtml(loc.note)}</div>` : ''}
+            </div>
+          </div>
+        </div>
+
+        ${timeline}
+        ${actions}
+      </div>`;
+    }
+
+    async function renderPeopleRequests() {
+      const wrap = $('#peopleRequestsWrap');
+      wrap.innerHTML = `<div class="grid gap-3"><div class="h-24 rounded-2xl skeleton"></div><div class="h-24 rounded-2xl skeleton"></div></div>`;
+
+      const all = await store.listRequests();
+      const mine = all.filter(r => (r.createdByUid && state.user?.uid && r.createdByUid === state.user.uid));
+      mine.sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
+
+      if (mine.length === 0) {
+        wrap.innerHTML = `<div class="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">No requests yet. Create one from “New report”.</div>`;
+        return;
+      }
+
+      wrap.innerHTML = `<div class="grid gap-3">${mine.map(r => requestCard(r)).join('')}</div>`;
+      wrap.querySelectorAll('[data-token]').forEach(el => {
+        el.addEventListener('click', async () => {
+          const token = el.getAttribute('data-token');
+          const req = await store.getRequest(token);
+          state.currentContext = req;
+        });
+      });
+    }
+
+    async function renderPeopleReports() {
+      const wrap = $('#peopleReportsWrap');
+      wrap.innerHTML = `<div class="grid gap-3"><div class="h-24 rounded-2xl skeleton"></div><div class="h-24 rounded-2xl skeleton"></div></div>`;
+
+      const all = await store.listRequests();
+      const mine = all.filter(r => (r.createdByUid && state.user?.uid && r.createdByUid === state.user.uid));
+      const released = mine.filter(r => r.status?.stage === 'released');
+
+      if (released.length === 0) {
+        wrap.innerHTML = `<div class="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">No completed reports yet. Wait until NGO marks “Released”.</div>`;
+        return;
+      }
+
+      wrap.innerHTML = `<div class="grid gap-3">
+        ${released.map(r => {
+          const rep = r.report || {};
+          return `
+            <div class="rounded-2xl border border-slate-200 bg-white p-4 soft-shadow">
+              <div class="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div class="flex flex-wrap items-center gap-2">
+                    <div class="mono text-xs font-bold">${escapeHtml(r.token)}</div>
+                    ${statusBadge(r)}
+                  </div>
+                  <div class="mt-1 text-sm font-semibold">Treatment report — ${escapeHtml(r.animalType)} </div>
+                  <div class="mt-2 grid gap-1 text-xs text-slate-700">
+                    <div><span class="text-slate-500">Main cause:</span> ${escapeHtml(rep.cause || '(not provided)')}</div>
+                    <div><span class="text-slate-500">Time taken:</span> ${escapeHtml(rep.timeTaken || '(not provided)')}</div>
+                    <div><span class="text-slate-500">Summary:</span> ${escapeHtml(rep.summary || '(not provided)')}</div>
+                  </div>
+                  <div class="mt-2 text-xs text-slate-500">Updated: ${escapeHtml(fmtDate(rep.updatedAt))}</div>
+                </div>
+                <div class="flex gap-2">
+                  <button data-pdf="${r.token}" class="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 focus-ring">Download PDF</button>
+                </div>
+              </div>
+            </div>`;
+        }).join('')}
+      </div>`;
+
+      wrap.querySelectorAll('[data-pdf]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const token = btn.getAttribute('data-pdf');
+          const req = await store.getRequest(token);
+          if (req) downloadReportPdf(req);
+        });
+      });
+    }
+
+    function downloadReportPdf(req) {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(16);
+      doc.text('AnimalAid — Treatment Report', 14, 16);
+
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Token: ${req.token}`, 14, 24);
+      doc.text(`Animal: ${req.animalType || '—'}`, 14, 30);
+      doc.text(`Reported by: ${req.reporterName || '—'}  Phone: ${req.reporterPhone || '—'}`, 14, 36);
+
+      const loc = req.location || {};
+      doc.text(`Captured location: ${loc.note || '—'}  (Lat: ${loc.lat ?? '—'}, Lng: ${loc.lng ?? '—'})`, 14, 42);
+
+      doc.text(`Requested: ${new Date(req.status?.requestedAt || req.createdAt).toLocaleString()}`, 14, 50);
+      doc.text(`Captured: ${req.status?.capturedAt ? new Date(req.status.capturedAt).toLocaleString() : '—'}`, 14, 56);
+      doc.text(`Treated: ${req.status?.treatedAt ? new Date(req.status.treatedAt).toLocaleString() : '—'}`, 14, 62);
+      doc.text(`Released: ${req.status?.releasedAt ? new Date(req.status.releasedAt).toLocaleString() : '—'}`, 14, 68);
+
+      doc.setFont('helvetica', 'bold');
+      doc.text('Summary', 14, 78);
+      doc.setFont('helvetica', 'normal');
+
+      const rep = req.report || {};
+      const lines = doc.splitTextToSize(`Main cause: ${rep.cause || '(not provided)'}\nTime taken: ${rep.timeTaken || '(not provided)'}\n\nTreatment summary:\n${rep.summary || '(not provided)'}\n`, 180);
+      doc.text(lines, 14, 86);
+
+      doc.setFontSize(9);
+      doc.text('Note: This report is provided for transparency. For medical guidance, consult a licensed veterinarian.', 14, 285);
+
+      doc.save(`${req.token}_treatment_report.pdf`);
+    }
+
+    // -------------------------
+    // Nearby vets (no APIs)
+    // -------------------------
+    const vets = [
+      { name: 'City Animal Hospital', lat: 28.6139, lng: 77.2090, rating: 4.5, phone: '+91 00000 00001' },
+      { name: 'GreenPaws Veterinary Clinic', lat: 19.0760, lng: 72.8777, rating: 4.6, phone: '+91 00000 00002' },
+      { name: 'Care4Strays Vet Center', lat: 12.9716, lng: 77.5946, rating: 4.4, phone: '+91 00000 00003' },
+      { name: 'Govt Animal Treatment Unit', lat: 22.5726, lng: 88.3639, rating: 4.1, phone: '+91 00000 00004' },
+      { name: 'Rapid Rescue Vet Point', lat: 13.0827, lng: 80.2707, rating: 4.3, phone: '+91 00000 00005' },
+      { name: 'Community Vet & Shelter', lat: 17.3850, lng: 78.4867, rating: 4.2, phone: '+91 00000 00006' },
+    ];
+
+    async function loadNearbyVets() {
+      let pos;
+      try {
+        pos = await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 });
+        });
+      } catch {
+        toast('Location permission is required to show nearby vets.', 'warn');
+        return;
+      }
+
+      const { latitude, longitude, accuracy } = pos.coords;
+      $('#vLat').textContent = latitude.toFixed(6);
+      $('#vLng').textContent = longitude.toFixed(6);
+      $('#vAcc').textContent = `${Math.round(accuracy)} m`;
+      $('#mapsLink').href = `https://www.google.com/maps?q=${latitude},${longitude}`;
+
+      const computed = vets.map(v => {
+        const km = haversineKm(latitude, longitude, v.lat, v.lng);
+        return { ...v, km, mins: minutesFromKm(km, 30) };
+      }).sort((a,b) => a.km - b.km).slice(0, 6);
+
+      $('#vetsWrap').innerHTML = computed.map(v => `
+        <div class="rounded-2xl border border-slate-200 bg-white p-4 soft-shadow">
+          <div class="text-sm font-semibold">${escapeHtml(v.name)}</div>
+          <div class="mt-1 text-xs text-slate-600">Rating: <span class="font-semibold">${v.rating.toFixed(1)}</span> • Phone: <span class="mono">${escapeHtml(v.phone)}</span></div>
+          <div class="mt-3 grid grid-cols-2 gap-2 text-xs">
+            <div class="rounded-xl border border-slate-200 bg-slate-50 p-2">
+              <div class="text-slate-500">Distance</div>
+              <div class="mt-0.5 font-semibold mono">${v.km.toFixed(1)} km</div>
+            </div>
+            <div class="rounded-xl border border-slate-200 bg-slate-50 p-2">
+              <div class="text-slate-500">ETA</div>
+              <div class="mt-0.5 font-semibold mono">${v.mins} min</div>
+            </div>
+          </div>
+          <a class="mt-3 inline-block text-xs font-semibold text-emerald-700 hover:text-emerald-900" href="https://www.google.com/maps?q=${v.lat},${v.lng}" target="_blank" rel="noreferrer">Open location</a>
+        </div>
+      `).join('');
+
+      toast('Nearby vets loaded.', 'ok');
+    }
+
+    // -------------------------
+    // NGO portal: requests + status transitions
+    // -------------------------
+    function isToday(ts) {
+      const d = new Date(ts);
+      const now = new Date();
+      return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+    }
+
+    function nextStage(current, action) {
+      const order = ['requested', 'captured', 'treated', 'released'];
+      const target = { captured: 'captured', treated: 'treated', released: 'released' }[action];
+      if (!target) return current;
+      const ci = order.indexOf(current);
+      const ti = order.indexOf(target);
+      return (ti >= ci) ? target : current;
+    }
+
+    async function updateCheckpoint(token, action) {
+      if (!(state.role === 'ngo' || state.role === 'admin')) {
+        toast('Only NGO/Admin can update checkpoints.', 'err');
+        return;
+      }
+
+      const req = await store.getRequest(token);
+      if (!req) return;
+      const now = Date.now();
+      req.status = req.status || { requestedAt: req.createdAt || now, capturedAt: null, treatedAt: null, releasedAt: null, stage: 'requested' };
+      const stage = req.status.stage || 'requested';
+      const newStage = nextStage(stage, action);
+
+      if (action === 'captured' && !req.status.capturedAt) req.status.capturedAt = now;
+      if (action === 'treated' && !req.status.treatedAt) req.status.treatedAt = now;
+      if (action === 'released' && !req.status.releasedAt) req.status.releasedAt = now;
+
+      req.status.stage = newStage;
+
+      if (req.status.stage === 'released') {
+        req.report = req.report || {};
+        req.report.updatedAt = req.report.updatedAt || now;
+        req.report.updatedBy = req.report.updatedBy || (state.user?.email || 'NGO');
+        if (!req.report.summary) req.report.summary = 'Animal treated and released to natural habitat.';
+        if (!req.report.timeTaken) {
+          const hours = req.status.capturedAt ? Math.max(1, Math.round((req.status.releasedAt - req.status.capturedAt)/36e5)) : null;
+          req.report.timeTaken = hours ? `${hours} hours` : '';
+        }
+      }
+
+      await store.upsertRequest(req);
+      state.currentContext = req;
+      toast(`Updated ${token}: ${action}`, 'ok');
+    }
+
+    async function renderNgoToday() {
+      const wrap = $('#ngoTodayWrap');
+      wrap.innerHTML = `<div class="grid gap-3"><div class="h-24 rounded-2xl skeleton"></div><div class="h-24 rounded-2xl skeleton"></div></div>`;
+
+      const all = await store.listRequests();
+      const today = all.filter(r => isToday(r.createdAt));
+      today.sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
+
+      if (today.length === 0) {
+        wrap.innerHTML = `<div class="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">No requests today.</div>`;
+        return;
+      }
+
+      wrap.innerHTML = `<div class="grid gap-3">${today.map(r => requestCard(r, { showActions: true, canUpdate: state.role === 'ngo' || state.role === 'admin' })).join('')}</div>`;
+
+      wrap.querySelectorAll('button[data-act]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const act = btn.getAttribute('data-act');
+          const token = btn.getAttribute('data-token');
+          if (act === 'edit') {
+            showPage('pageNgoReports');
+            await loadNgoReportSelect(token);
+            return;
+          }
+          await updateCheckpoint(token, act);
+          await renderNgoToday();
+        });
+      });
+    }
+
+    // -------------------------
+    // NGO portal: edit report
+    // -------------------------
+    async function loadNgoReportSelect(selectToken = null) {
+      const sel = $('#ngoReportSelect');
+      sel.innerHTML = '';
+      const all = await store.listRequests();
+      const sorted = [...all].sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
+
+      if (sorted.length === 0) {
+        sel.innerHTML = `<option value="">(no requests)</option>`;
+        fillNgoReportForm(null);
+        return;
+      }
+
+      for (const r of sorted) {
+        const opt = document.createElement('option');
+        opt.value = r.token;
+        opt.textContent = `${r.token} — ${r.animalType} — ${r.status?.stage || 'requested'}`;
+        sel.appendChild(opt);
+      }
+
+      const token = selectToken || state.currentContext?.token || sorted[0].token;
+      sel.value = token;
+      const req = await store.getRequest(token);
+      state.currentContext = req;
+      fillNgoReportForm(req);
+    }
+
+    function fillNgoReportForm(req) {
+      if (!req) {
+        $('#reportCause').value = '';
+        $('#reportTimeTaken').value = '';
+        $('#reportSummary').value = '';
+        $('#reportInternal').value = '';
+        return;
+      }
+      const rep = req.report || {};
+      $('#reportCause').value = rep.cause || '';
+      $('#reportTimeTaken').value = rep.timeTaken || '';
+      $('#reportSummary').value = rep.summary || '';
+      $('#reportInternal').value = rep.internal || '';
+    }
+
+    async function saveNgoReport() {
+      if (!(state.role === 'ngo' || state.role === 'admin')) {
+        toast('Only NGO/Admin can edit reports.', 'err');
+        return;
+      }
+
+      const token = $('#ngoReportSelect').value;
+      const req = await store.getRequest(token);
+      if (!req) return;
+
+      req.report = req.report || {};
+      req.report.cause = $('#reportCause').value.trim();
+      req.report.timeTaken = $('#reportTimeTaken').value.trim();
+      req.report.summary = $('#reportSummary').value.trim();
+      req.report.internal = $('#reportInternal').value.trim();
+      req.report.updatedAt = Date.now();
+      req.report.updatedBy = state.user?.email || 'NGO';
+
+      await store.upsertRequest(req);
+      toast('Report saved.', 'ok');
+      state.currentContext = req;
+    }
+
+    async function aiDraftNgoReport() {
+      const token = $('#ngoReportSelect').value;
+      const req = await store.getRequest(token);
+      if (!req) return;
+
+      const prompt = `Create a concise treatment report for public transparency.\n\nAnimal: ${req.animalType}\nReported condition: ${req.conditionText}\nCheckpoint times: requested=${fmtDate(req.status?.requestedAt)}, captured=${fmtDate(req.status?.capturedAt)}, treated=${fmtDate(req.status?.treatedAt)}, released=${fmtDate(req.status?.releasedAt)}\n\nReturn JSON with keys: cause (short), timeTaken (short), summary (2-4 lines).`;
+
+      try {
+        const out = await aiChat([
+          { role: 'system', content: 'You write short veterinary treatment summaries for public reporting.' },
+          { role: 'user', content: prompt }
+        ], { temperature: 0.2 });
+
+        let json = null;
+        try { json = JSON.parse(out); } catch {
+          const match = out.match(/\{[\s\S]*\}/);
+          if (match) json = JSON.parse(match[0]);
+        }
+
+        if (json) {
+          $('#reportCause').value = json.cause || $('#reportCause').value;
+          $('#reportTimeTaken').value = json.timeTaken || $('#reportTimeTaken').value;
+          $('#reportSummary').value = json.summary || $('#reportSummary').value;
+          toast('AI draft inserted.', 'ok');
+        } else {
+          $('#reportSummary').value = out;
+          toast('AI draft inserted as text (non-JSON).', 'warn');
+        }
+      } catch (e) {
+        console.error(e);
+        toast(e.message || 'AI draft failed', 'warn');
+        $('#reportSummary').value = $('#reportSummary').value || 'Animal examined, treated, monitored, and released after stabilization.';
+      }
+    }
+
+    // -------------------------
+    // Analytics & exports
+    // -------------------------
+    function treatmentDurationHours(req) {
+      const a = req.status?.capturedAt;
+      const b = req.status?.releasedAt || req.status?.treatedAt;
+      if (!a || !b) return null;
+      return Math.max(0, (b - a) / 36e5);
+    }
+
+    function withinDays(ts, days) {
+      const now = Date.now();
+      return ts && (now - ts) <= days * 86400e3;
+    }
+
+    async function renderAnalytics() {
+      const all = await store.listRequests();
+
+      const week = all.filter(r => withinDays(r.createdAt, 7));
+      const month = all.filter(r => withinDays(r.createdAt, 30));
+      const released = all.filter(r => r.status?.stage === 'released');
+
+      const durations = released.map(treatmentDurationHours).filter(x => typeof x === 'number' && isFinite(x));
+      const avg = durations.length ? (durations.reduce((a,b)=>a+b,0) / durations.length) : null;
+
+      $('#kpiWeek').textContent = String(week.length);
+      $('#kpiMonth').textContent = String(month.length);
+      $('#kpiReleased').textContent = String(released.length);
+      $('#kpiAvg').textContent = avg == null ? '—' : avg.toFixed(1);
+
+      const tbody = $('#analyticsTbody');
+      tbody.innerHTML = '';
+      const rows = [...all].sort((a,b) => (b.createdAt||0) - (a.createdAt||0)).slice(0, 120);
+      for (const r of rows) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="px-3 py-2 text-xs mono">${escapeHtml(r.token)}</td>
+          <td class="px-3 py-2 text-xs">${escapeHtml(r.animalType || '—')}</td>
+          <td class="px-3 py-2 text-xs mono">${escapeHtml(r.reporterPhone || '—')}</td>
+          <td class="px-3 py-2 text-xs">${escapeHtml(r.report?.cause || '—')}</td>
+          <td class="px-3 py-2 text-xs">${escapeHtml(r.report?.timeTaken || '—')}</td>
+          <td class="px-3 py-2 text-xs">${escapeHtml(r.location?.note || '')} <span class="text-slate-400">(${r.location?.lat?.toFixed?.(3) ?? '—'}, ${r.location?.lng?.toFixed?.(3) ?? '—'})</span></td>
+        `;
+        tbody.appendChild(tr);
+      }
+    }
+
+    async function downloadAnalyticsPdf() {
+      const all = await store.listRequests();
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ orientation: 'landscape' });
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(14);
+      doc.text('AnimalAid — Weekly/Monthly Treatment Panel', 14, 14);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 20);
+
+      const rows = [...all].sort((a,b) => (b.createdAt||0) - (a.createdAt||0)).slice(0, 30);
+      const headers = ['Token', 'Animal', 'Phone', 'Cause', 'Time', 'Location note'];
+
+      let y = 30;
+      const colX = [14, 52, 82, 110, 150, 175];
+
+      doc.setFont('helvetica', 'bold');
+      headers.forEach((h, i) => doc.text(h, colX[i], y));
+      y += 6;
+      doc.setFont('helvetica', 'normal');
+
+      for (const r of rows) {
+        if (y > 190) { doc.addPage(); y = 18; }
+        const loc = `${(r.location?.note || '').slice(0, 42)} (${r.location?.lat?.toFixed?.(2) ?? '—'}, ${r.location?.lng?.toFixed?.(2) ?? '—'})`;
+        const vals = [
+          r.token,
+          r.animalType || '—',
+          r.reporterPhone || '—',
+          (r.report?.cause || '—').slice(0, 20),
+          (r.report?.timeTaken || '—').slice(0, 14),
+          loc
+        ];
+        vals.forEach((v, i) => doc.text(String(v), colX[i], y));
+        y += 6;
+      }
+
+      doc.save('animalaid_analytics.pdf');
+    }
+
+    // -------------------------
+    // Admin dashboard
+    // -------------------------
+    async function renderAdminDashboard() {
+      $('#adminEmailList').textContent = ADMIN_EMAILS.map(e => `- ${e}`).join('\n') || '(none)';
+      $('#ngoEmailList').textContent = NGO_EMAILS.map(e => `- ${e}`).join('\n') || '(none)';
+
+      const all = await store.listRequests();
+      const byStage = { requested: 0, captured: 0, treated: 0, released: 0 };
+      for (const r of all) {
+        const st = r.status?.stage || 'requested';
+        if (byStage[st] == null) byStage[st] = 0;
+        byStage[st]++;
+      }
+
+      $('#aTotal').textContent = String(all.length);
+      $('#aRequested').textContent = String(byStage.requested || 0);
+      $('#aCaptured').textContent = String(byStage.captured || 0);
+      $('#aTreated').textContent = String(byStage.treated || 0);
+      $('#aReleased').textContent = String(byStage.released || 0);
+
+      const tbody = $('#adminTbody');
+      tbody.innerHTML = '';
+      const rows = [...all].sort((a,b) => (b.createdAt||0) - (a.createdAt||0)).slice(0, 80);
+      for (const r of rows) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="px-3 py-2 text-xs mono">${escapeHtml(r.token)}</td>
+          <td class="px-3 py-2 text-xs">${escapeHtml(r.status?.stage || 'requested')}</td>
+          <td class="px-3 py-2 text-xs">${escapeHtml(r.animalType || '—')}</td>
+          <td class="px-3 py-2 text-xs">${escapeHtml(r.reporterName || '—')}</td>
+          <td class="px-3 py-2 text-xs mono">${escapeHtml(fmtDate(r.createdAt))}</td>
+        `;
+        tbody.appendChild(tr);
+      }
+    }
+
+    async function downloadAdminPdf() {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+
+      const all = await store.listRequests();
+      const byStage = { requested: 0, captured: 0, treated: 0, released: 0 };
+      for (const r of all) {
+        const st = r.status?.stage || 'requested';
+        byStage[st] = (byStage[st] || 0) + 1;
+      }
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(16);
+      doc.text('AnimalAid — Admin Summary', 14, 16);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 24);
+      doc.text(`Total: ${all.length}`, 14, 32);
+      doc.text(`Requested: ${byStage.requested || 0}`, 14, 38);
+      doc.text(`Captured: ${byStage.captured || 0}`, 14, 44);
+      doc.text(`Treated: ${byStage.treated || 0}`, 14, 50);
+      doc.text(`Released: ${byStage.released || 0}`, 14, 56);
+
+      doc.setFontSize(9);
+      doc.text('Note: This PDF reflects Firestore data if configured, otherwise local browser data.', 14, 70);
+
+      doc.save('animalaid_admin.pdf');
+    }
+
+    function downloadTextFile(name, text, mime = 'application/json') {
+      const blob = new Blob([text], { type: mime });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    // -------------------------
+    // AI helper chat UI
+    // -------------------------
+    function chatAdd(role, text) {
+      const wrap = $('#chat');
+      const row = document.createElement('div');
+      const isUser = role === 'user';
+      row.className = `mb-3 flex ${isUser ? 'justify-end' : 'justify-start'}`;
+      row.innerHTML = `
+        <div class="max-w-[92%] rounded-2xl border ${isUser ? 'border-slate-200 bg-slate-900 text-white' : 'border-slate-200 bg-white'} p-3">
+          <div class="text-xs ${isUser ? 'text-slate-200' : 'text-slate-500'}">${isUser ? 'You' : 'Assistant'}</div>
+          <div class="mt-1 whitespace-pre-wrap text-sm leading-relaxed">${escapeHtml(text)}</div>
+        </div>
+      `;
+      wrap.appendChild(row);
+      wrap.scrollTop = wrap.scrollHeight;
+    }
+
+    function chatClear() {
+      $('#chat').innerHTML = '';
+      chatAdd('assistant', 'Hi! I can help you triage symptoms, draft complaints, summarize treatment reports, and suggest security improvements.');
+    }
+
+    async function chatSend() {
+      const input = $('#chatInput');
+      const text = input.value.trim();
+      if (!text) return;
+      input.value = '';
+      chatAdd('user', text);
+
+      try {
+        const out = await aiChat([
+          { role: 'system', content: 'You are AnimalAid assistant. Provide concise, safe, actionable answers. Avoid drug dosages.' },
+          { role: 'user', content: text }
+        ], { temperature: 0.35 });
+        chatAdd('assistant', out);
+      } catch (e) {
+        console.error(e);
+        chatAdd('assistant', localHeuristicAI([{ role: 'user', content: text }]));
+      }
+    }
+
+    async function chatUseCurrentContext() {
+      const req = state.currentContext;
+      if (!req) {
+        toast('No request selected yet. Open a request card first.', 'warn');
+        return;
+      }
+      const payload = `Context:\nToken: ${req.token}\nAnimal: ${req.animalType}\nCondition: ${req.conditionText}\nAI triage: ${req.aiAssessment || '(none)'}\nStatus: ${req.status?.stage}\nLocation note: ${req.location?.note || ''}\n\nNow ask me what to do next for this case.`;
+      $('#chatInput').value = payload;
+      $('#chatInput').focus();
+    }
+
+    // -------------------------
+    // OpenAI key persistence
+    // -------------------------
+    function loadOpenAI() {
+      const k = getSavedOpenAIKey();
+      state.openaiKey = k;
+      $('#openaiKey').value = k || '';
+    }
+
+    function saveOpenAIKey() {
+      const k = $('#openaiKey').value.trim();
+      if (!k) {
+        toast('Key is empty.', 'warn');
+        return;
+      }
+      localStorage.setItem('animalaid_openai_key', k);
+      state.openaiKey = k;
+      toast('OpenAI key saved in browser storage.', 'ok');
+    }
+
+    function clearOpenAIKey() {
+      localStorage.removeItem('animalaid_openai_key');
+      state.openaiKey = null;
+      $('#openaiKey').value = '';
+      toast('OpenAI key cleared.', 'ok');
+    }
+
+    // -------------------------
+    // Wire events
+    // -------------------------
+    function bindEvents() {
+      // top bar
+      $('#btnSignOut').addEventListener('click', doSignOut);
+
+      // login
+      $('#btnGoogle').addEventListener('click', signInPeopleGoogle);
+      $('#btnLoginNgo').addEventListener('click', () => signInStaffEmail('ngo'));
+      $('#btnLoginAdmin').addEventListener('click', () => signInStaffEmail('admin'));
+      $('#btnDemoNgo').addEventListener('click', () => { $('#email').value = 'ngo.demo@org.com'; $('#password').value = 'demo'; signInStaffEmail('ngo'); });
+      $('#btnDemoAdmin').addEventListener('click', () => { $('#email').value = 'admin@animalaid.org'; $('#password').value = 'demo'; signInStaffEmail('admin'); });
+
+      // Demo studio (one-click)
+      $('#btnDemoOpenPeople')?.addEventListener('click', async () => {
+        // Force demo auth portal regardless of Firebase state
+        state.firebaseReady = false;
+        state.firestoreReady = false;
+        state.demoAuth = true;
+        setModeBadge();
+        demoSetUser({ role: 'people', email: 'people.demo@gmail.com', displayName: 'Demo People', provider: 'google.com' });
+        await hydrateReporterDefaults();
+      });
+      $('#btnDemoOpenNgo')?.addEventListener('click', () => {
+        state.firebaseReady = false;
+        state.firestoreReady = false;
+        state.demoAuth = true;
+        setModeBadge();
+        demoSetUser({ role: 'ngo', email: 'ngo.demo@org.com', displayName: 'Demo NGO', provider: 'password' });
+      });
+      $('#btnDemoOpenAdmin')?.addEventListener('click', () => {
+        state.firebaseReady = false;
+        state.firestoreReady = false;
+        state.demoAuth = true;
+        setModeBadge();
+        demoSetUser({ role: 'admin', email: 'admin@animalaid.org', displayName: 'Demo Admin', provider: 'password' });
+      });
+      $('#btnSeedDemoData')?.addEventListener('click', seedDemoData);
+      $('#btnClearDemoData')?.addEventListener('click', clearAllRequestsDemo);
+
+      // OpenAI key
+      $('#btnSaveOpenAI').addEventListener('click', saveOpenAIKey);
+      $('#btnClearOpenAI').addEventListener('click', clearOpenAIKey);
+
+      // People new
+      $('#btnGetLocation').addEventListener('click', fillLocation);
+      $('#btnResetNew').addEventListener('click', resetNewReport);
+      $('#btnStartCamera').addEventListener('click', startCamera);
+      $('#btnStopCamera').addEventListener('click', stopCamera);
+      $('#btnCapture').addEventListener('click', () => capturePhoto());
+      $('#file').addEventListener('change', (e) => handleFileUpload(e.target.files[0]));
+      $('#btnAIAnalyze').addEventListener('click', aiAnalyzeNew);
+      $('#btnAutofillComplaint').addEventListener('click', aiDraftComplaint);
+      $('#btnSubmitRequest').addEventListener('click', submitRequest);
+
+      // People pages
+      $('#btnRefreshPeople').addEventListener('click', renderPeopleRequests);
+      $('#btnRefreshReports').addEventListener('click', renderPeopleReports);
+      $('#btnLoadVets').addEventListener('click', loadNearbyVets);
+
+      // NGO pages
+      $('#btnRefreshNgo').addEventListener('click', renderNgoToday);
+      $('#ngoReportSelect').addEventListener('change', async () => {
+        const token = $('#ngoReportSelect').value;
+        const req = await store.getRequest(token);
+        state.currentContext = req;
+        fillNgoReportForm(req);
+      });
+      $('#btnSaveReport').addEventListener('click', saveNgoReport);
+      $('#btnAIDraftReport').addEventListener('click', aiDraftNgoReport);
+      $('#btnRefreshAnalytics').addEventListener('click', renderAnalytics);
+      $('#btnDownloadAnalyticsPdf').addEventListener('click', downloadAnalyticsPdf);
+
+      // Admin
+      $('#btnAdminRefresh').addEventListener('click', renderAdminDashboard);
+      $('#btnAdminPdf').addEventListener('click', downloadAdminPdf);
+      $('#btnExportJson').addEventListener('click', async () => {
+        const name = `animalaid_export_${new Date().toISOString().slice(0,10)}.json`;
+        const json = await store.exportJson();
+        downloadTextFile(name, json);
+        toast('Exported JSON.', 'ok');
+      });
+      $('#adminImportFile').addEventListener('change', async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        try {
+          const text = await file.text();
+          await store.importJson(text);
+          toast('Imported JSON.', 'ok');
+          await renderAdminDashboard();
+          await renderNgoToday();
+          await renderAnalytics();
+        } catch (err) {
+          toast(err.message || 'Import failed', 'err');
+        } finally {
+          e.target.value = '';
+        }
+      });
+      $('#btnClearLocal').addEventListener('click', async () => {
+        if (!confirm('Clear all requests/reports? This will clear Firestore data if configured.')) return;
+        await store.clearAll();
+        toast('Data cleared.', 'ok');
+        await renderAdminDashboard();
+      });
+
+      // Access blocked
+      $('#btnGoSignOut').addEventListener('click', doSignOut);
+
+      // Sidebar
+      $('#btnOpenAIHelper').addEventListener('click', () => { showPage('pageAIHelper'); });
+
+      // Chat
+      $('#btnClearChat').addEventListener('click', chatClear);
+      $('#btnSendChat').addEventListener('click', chatSend);
+      $('#chatInput').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); chatSend(); } });
+      $('#btnContextFromCurrent').addEventListener('click', chatUseCurrentContext);
+      $('#btnContextAwareness').addEventListener('click', () => { $('#chatInput').value = 'Generate awareness copy for public about reporting injured animals safely.'; $('#chatInput').focus(); });
+      $('#btnContextSecurity').addEventListener('click', () => { $('#chatInput').value = 'Suggest security improvements for this app (people vs NGO vs admin).'; $('#chatInput').focus(); });
+    }
+
+    // -------------------------
+    // Boot
+    // -------------------------
+    async function boot() {
+      bindEvents();
+      loadOpenAI();
+      chatClear();
+
+      // Auto-seed demo data once (for easy recording), but do not overwrite real Firestore data.
+      try {
+        const seededFlag = localStorage.getItem('animalaid_demo_seeded_v1');
+        const local = loadLocal();
+        const hasLocal = (local?.requests || []).length > 0;
+        if (!seededFlag && !hasLocal && !looksConfiguredFirebase(FIREBASE_CONFIG)) {
+          await seedDemoData();
+          localStorage.setItem('animalaid_demo_seeded_v1', '1');
+        }
+      } catch (e) {
+        console.warn('Demo seeding skipped', e);
+      }
+
+      await initFirebaseAuth();
+      setModeBadge();
+      renderAuthState();
+    }
+
+    boot();
+  </script>
+</body>
+</html>
